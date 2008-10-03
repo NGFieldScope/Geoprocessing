@@ -31,21 +31,26 @@ try:
     inputRasterList = inputRasters.split(";")
     
     # Convert the first raster to points
+    gp.addmessage("Converting to points...")
     gp.RasterToPoint_conversion(inputRasterList[0], tempFC, "")
     
     # Sample all the rasters at those points
+    gp.addmessage("Sampling rasters...")
     gp.Sample_sa(inputRasters, tempFC, sampleTable, "NEAREST")
     
     # Join the sample table to the points
+    gp.addmessage("Joining sample table to points...")
     fields = "; ".join(map(lambda field: field.Name, gp.ListFields(sampleTable, "g_*")))
     gp.JoinField_management(tempFC, "POINTID", sampleTable, "Rowid", fields)
 
+    gp.addmessage("Exporting result...")
     fieldmappings = gp.createobject("FieldMappings");
     def addMapping (srcField, destFieldName):
         fieldmap = gp.createobject("FieldMap")
         fieldmap.addinputfield(tempFC, srcField.Name)
         outfield = fieldmap.OutputField
         outfield.Name = destFieldName
+        outfield.AliasName = destFieldName
         fieldmap.OutputField = outfield
         fieldmappings.addfieldmap(fieldmap)
         return destFieldName
