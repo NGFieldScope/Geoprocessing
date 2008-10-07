@@ -9,25 +9,22 @@
 # Import system modules
 import sys, string, os, arcgisscripting
 
-# Import system modules
-import sys, string, os, arcgisscripting
-
 # Create the Geoprocessor object
 gp = arcgisscripting.create(9.3)
 gp.overwriteoutput = 1
 
 try:
+    toolShareFolder = os.path.dirname(sys.path[0]) + os.path.sep
+    scratchGDB = toolShareFolder + "Scratch" + os.path.sep + "scratch.gdb"
+    scratchWorkspace = gp.scratchworkspace or scratchGDB
+    
     inputRasters = sys.argv[1]
     outputFC = sys.argv[2]
     
     gp.CheckOutExtension("spatial")
-    gp.AddToolbox("C:/Program Files/ArcGIS/ArcToolbox/Toolboxes/Spatial Analyst Tools.tbx")
-    gp.AddToolbox("C:/Program Files/ArcGIS/ArcToolbox/Toolboxes/Conversion Tools.tbx")
-    gp.AddToolbox("C:/Program Files/ArcGIS/ArcToolbox/Toolboxes/Data Management Tools.tbx")
-    tempDir = gp.scratchworkspace or gp.GetSystemEnvironment("TEMP")
     
-    sampleTable = gp.createscratchname("samples", "", "Table", tempDir)
-    tempFC = gp.createscratchname("points", "", "FeatureClass", "in_memory")
+    sampleTable = gp.createscratchname("samples", "", "Table", scratchWorkspace)
+    tempFC = gp.createscratchname("points", "", "FeatureClass", scratchWorkspace)
     inputRasterList = inputRasters.split(";")
     
     # Convert the first raster to points
@@ -41,7 +38,7 @@ try:
     # Join the sample table to the points
     gp.addmessage("Joining sample table to points...")
     fields = "; ".join(map(lambda field: field.Name, gp.ListFields(sampleTable, "g_*")))
-    gp.JoinField_management(tempFC, "POINTID", sampleTable, "Rowid", fields)
+    gp.JoinField_management(tempFC, "POINTID", sampleTable, "OBJECTID", fields)
 
     gp.addmessage("Exporting result...")
     fieldmappings = gp.createobject("FieldMappings");
@@ -58,7 +55,12 @@ try:
     newNames = map(lambda p: os.path.split(p)[1], inputRasterList)
     map(addMapping, srcFields, newNames)
     gp.Merge_management(tempFC, outputFC, fieldmappings)
+
+    gp.addmessage("Cleaning up...")
+    gp.Delete_management(sampleTable, "Table")
+    gp.Delete_management(tempFC, "FeatureClass")
     
+    gp.CheckInExtension("spatial")
 except Exception, err:
     gp.AddError(str(err))
     gp.AddError(gp.getmessages(2))

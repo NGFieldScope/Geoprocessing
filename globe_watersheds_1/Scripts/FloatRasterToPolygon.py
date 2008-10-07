@@ -14,26 +14,29 @@ gp = arcgisscripting.create(9.3)
 gp.overwriteoutput = 1
 
 try:
+    toolShareFolder = os.path.dirname(sys.path[0]) + os.path.sep
+    scratchGDB = toolShareFolder + "Scratch" + os.path.sep + "scratch.gdb"
+    scratchWorkspace = gp.scratchworkspace or scratchGDB
+    
     inputRaster = sys.argv[1]
     decimalPlaces = sys.argv[2]
     outputFC = sys.argv[3]
     factor = pow(10, float(decimalPlaces))
     
     gp.CheckOutExtension("spatial")
-    gp.AddToolbox("C:/Program Files/ArcGIS/ArcToolbox/Toolboxes/Spatial Analyst Tools.tbx")
-    gp.AddToolbox("C:/Program Files/ArcGIS/ArcToolbox/Toolboxes/Conversion Tools.tbx")
-    gp.AddToolbox("C:/Program Files/ArcGIS/ArcToolbox/Toolboxes/Data Management Tools.tbx")
-    tempDir = gp.scratchworkspace or gp.GetSystemEnvironment("TEMP")
     
-    timesRaster = gp.createscratchname("times", "", "RasterDataset", tempDir)
-    intRaster = gp.createscratchname("integer", "", "RasterDataset", tempDir)
+    timesRaster = gp.createscratchname("times", "", "RasterDataset", scratchWorkspace)
+    intRaster = gp.createscratchname("integer", "", "RasterDataset", scratchWorkspace)
     
     gp.Times_sa(inputRaster, factor, timesRaster)
     gp.Int_sa(timesRaster, intRaster)
     gp.RasterToPolygon_conversion(intRaster, outputFC, "SIMPLIFY", "")
     gp.AddField_management(outputFC, "Value", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
     gp.CalculateField_management(outputFC, "Value", "[GRIDCODE] / " + str(factor), "VB", "")
-    gp.DeleteField_management(outputFC, "ID;GRIDCODE")
+    gp.DeleteField_management(outputFC, "ID;GRIDCODE"
+    gp.Delete_management(timesRaster, "RasterDataset")
+    gp.Delete_management(intRaster, "RasterDataset")
+    gp.CheckInExtension("spatial")
 except Exception, err:
     gp.AddError(str(err))
     gp.AddError(gp.getmessages(2))
