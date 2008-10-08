@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 
 # Import system modules
-import sys, string, os, arcgisscripting
+import time, sys, string, os, arcgisscripting
 
 # Create the Geoprocessor object
 gp = arcgisscripting.create(9.3)
@@ -18,7 +18,7 @@ try:
     
     inputFC = sys.argv[1]
     rasterName = sys.argv[2]
-    inputRaster = toolDataGDB + os.path.sep + rasterName
+    inputRaster = toolDataFolder + os.path.sep + rasterName + ".img"
     outTable = sys.argv[3]
 
     # create the out table if it doesn't exist
@@ -29,6 +29,7 @@ try:
     outRows = gp.insertcursor(outTable)
     
     gp.CheckOutExtension("spatial")
+    startTime = time.clock()
     
     if rasterName in [ "landcover" ]:
         # Indexed raster
@@ -75,6 +76,7 @@ try:
         del statRows
         gp.delete_management(stats, "Table")
     del outRows
+    gp.addmessage("Execution time=" + str(time.clock() - startTime) + " seconds")
     gp.CheckInExtension("spatial")
 except Exception, err:
     gp.AddError(str(err))
