@@ -35,12 +35,12 @@ try:
         gp.CreateFeatureclass_management(os.path.split(outputFC)[0], os.path.split(outputFC)[1], "POLYLINE", "#", "DISABLED", "DISABLED", outputSR)
     
     # get the cell size of the flow direction raster
-    flowDirDataset = toolDataFolder + "flow_composite_30sec.img"
+    flowDirDataset = toolDataFolder + "flow_composite_500_30sec.img"
     flowDesc = gp.describe(flowDirDataset + "/Band_1")
     cellWidth = flowDesc.MeanCellWidth
     cellHeight = flowDesc.MeanCellHeight
     # segments dataset
-    segmentsFC = toolDataGDB + "precomputed_segments"
+    segmentsFC = toolDataGDB + "precomputed_segments_500"
     segmentsFieldName = gp.describe(segmentsFC).ShapeFieldName
 
     # create the array for storing points
@@ -90,7 +90,7 @@ try:
     gp.addmessage("Flow time=" + str(time.clock() - startTime) + " seconds")
     startTime = time.clock()
     if (segmentId != 0):
-        segments = gp.searchcursor(segmentsFC, "Segment_Id = " + str(segmentId))
+        segments = gp.searchcursor(segmentsFC, "POINTID = " + str(segmentId))
         segment = segments.next()
         if (segment):
             segmentPoints = segment.getvalue(segmentsFieldName).getpart().getobject(0)
