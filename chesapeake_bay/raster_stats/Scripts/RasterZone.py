@@ -62,16 +62,18 @@ try:
         gp.delete_management(tabulation, "Table")
     else:
         stats = gp.createscratchname("zonalStats", "", "Table", scratchWorkspace)
+        fields = [ "COUNT", "STD", "MIN", "MAX", "MEAN" ]
         gp.zonalstatisticsastable_sa(inputFC, "ID", inputRaster, stats)
         statFields = gp.listfields(stats)
         statRows = gp.searchcursor(stats)
         statRow = statRows.next()
         for statField in statFields[2:]:
-            outRow = outRows.newrow()
-            outRow.setvalue("Name", statField.Name)
-            outRow.setvalue("Value", statRow.getvalue(statField.Name))
-            outRows.insertrow(outRow)
-            del outRow
+            if statField.Name in fields:
+                outRow = outRows.newrow()
+                outRow.setvalue("Name", statField.Name)
+                outRow.setvalue("Value", statRow.getvalue(statField.Name))
+                outRows.insertrow(outRow)
+                del outRow
         del statRow
         del statRows
         gp.delete_management(stats, "Table")
