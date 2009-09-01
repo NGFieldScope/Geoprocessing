@@ -1,0 +1,9 @@
+20090212  40   0    23     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\raster3 = SELECTMASK(E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\g_g_g2, E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\raster2)
+20090212  55   6   -28     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\raster2 = FILLSINK(E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\g_g_g2,  #)
+20090212 108   2   127     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\raster2 = FLOWDIRECTION(E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\g_g_g2,  #, NORMAL)
+200903171232   0     0     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\raster2 = (E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\z_z_z2c1  *  ( 1000))
+200903171233   0     0     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\raster2 =  INT (E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\times0)
+200903171233   0     0     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\min_do_ras_poly = GRIDSHAPE(E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\integer0, WEED)
+200903171238   0     0     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\min_do_pts = GRIDPOINTSHAPE(E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\z_z_z3c1)
+200903171437   0     0     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\points0 = GRIDPOINTSHAPE(E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\g_g_g2)
+200903171437   0     1     0Russell E:\GIS\scripts\CHESAP~1\WATERS~1\Scratch\temp4.txt = SAMPLE(C:\DOCUME~1\Russell\LOCALS~1\Temp\point_file3, E:\GIS\scripts\CHESAP

@@ -55,10 +55,11 @@ try:
     while True:
         samplePt = str(point.x) + " " + str(point.y)
         values = gp.GetCellValue_management(flowDirDataset, samplePt).getoutput(0).split("\\n")
-        flowDir, segmentId = values[0], int(values[1])
+        flowDir = values[0]
         if (flowDir == "NoData"):
             pointArray.add(point)
             break
+        segmentId = int(values[1])
         if (segmentId != 0):
             break
         flowDir = int(flowDir)
