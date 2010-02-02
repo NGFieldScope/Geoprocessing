@@ -17,25 +17,30 @@ using ESRI.ArcGIS.Geodatabase;
 using ESRI.ArcGIS.Geometry;
 using ESRI.ArcGIS.Geoprocessing;
 using ESRI.ArcGIS.Geoprocessor;
+using ESRI.ArcGIS.DataSourcesGDB;
 
 public class FlowPath : IHttpHandler {
     
-    private static const string[] EMPTY_LIST = new string[0];
-    
-    private IGPUtilities m_GPUtilities;
-    private Geoprocessor m_Geoprocessor;
-    
-    
-    public FlowPath () {
-        m_GPUtilities = new GPUtilitiesClass();
-        m_Geoprocessor = new Geoprocessor();
+    private static readonly string[] EMPTY_LIST = new string[0];
+
+    public FlowPath() {
+        IAoInitialize aoInit = new AoInitializeClass();
+        aoInit.Initialize(esriLicenseProductCode.esriLicenseProductCodeArcServer);
     }
-    
+
     public void ProcessRequest (HttpContext context) {
-        double x = Double.Parse(HttpUtility.UrlDecode(context.Request.Params["x"]));
-        double y = Double.Parse(HttpUtility.UrlDecode(context.Request.Params["y"]));
         try
         {
+            double x = Double.Parse(HttpUtility.UrlDecode(context.Request.Params["x"]));
+            double y = Double.Parse(HttpUtility.UrlDecode(context.Request.Params["y"]));
+
+            IWorkspaceFactory2 workspaceFactory = new FileGDBWorkspaceFactoryClass();
+            string workspacePath = ConfigurationSettings.AppSettings["Workspace"];
+            IRasterWorkspaceEx rasterWorkspace = (IRasterWorkspaceEx)workspaceFactory.OpenFromFile(workspacePath, 0);
+
+            string lowResDS = ConfigurationSettings.AppSettings["LowResolutionFlowDirection"];
+            IRasterDataset loResDataset = rasterWorkspace.OpenRasterDataset(lowResDS);
+            
             string[] hiResDSList = EMPTY_LIST;
             string hiResDS = ConfigurationSettings.AppSettings["HighResolutionFlowDirection"];
             if (hiResDS != null) {
@@ -49,8 +54,6 @@ public class FlowPath : IHttpHandler {
             if (maxSteps != null) {
                 hiResMaxSteps = Int32.Parse(maxSteps);
             }
-            string lowResDS = ConfigurationSettings.AppSettings["LowResolutionFlowDirection"];
-            IRasterDataset loResDataset = m_GPUtilities.OpenRasterDatasetFromString(lowResDS);
             
             // setup output path
             object missing = Type.Missing;
@@ -61,7 +64,7 @@ public class FlowPath : IHttpHandler {
 
             // (possibly) move along high-res flow path until we reach the edge of the watershed
             for (int i = 0; i < hiResDSList.Length; i += 1) {
-                IRasterDataset flowDirHiResDS = m_GPUtilities.OpenRasterDatasetFromString(hiResDSList[i]);
+                IRasterDataset flowDirHiResDS = rasterWorkspace.OpenRasterDataset(hiResDSList[i]);
                 if (flowDirHiResDS == null) {
                     throw new Exception("Could not open high resolution flow direction raster " + hiResDSList[i]);
                 }
@@ -123,21 +126,22 @@ public class FlowPath : IHttpHandler {
             polyLine.AddGeometry(path, ref missing, ref missing);
 
 
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = "text/plain";
+            //context.Response.ContentType = "application/json";
             context.Response.StatusCode = 200;
-            context.Response.Write("{");
-            context.Response.Write("  \"results\":[");
-            context.Response.Write("    {");
-            context.Response.Write("      \"paramName\":\"flowpath\",");
-            context.Response.Write("      \"dataType\":\"GPFeatureRecordSetLayer\",");
-            context.Response.Write("      \"value\":{");
-            context.Response.Write("        \"geometryType\":\"esriGeometryPolyline\",");
-            context.Response.Write("        \"spatialReference\":{\"wkid\":4326},");
-            context.Response.Write("        \"features\":[");
-            context.Response.Write("          {");
-            context.Response.Write("            \"geometry\":{");
-            context.Response.Write("              \"paths\":[");
-            context.Response.Write("                [");
+            context.Response.Write("{\n");
+            context.Response.Write("  \"results\":[\n");
+            context.Response.Write("    {\n");
+            context.Response.Write("      \"paramName\":\"flowpath\",\n");
+            context.Response.Write("      \"dataType\":\"GPFeatureRecordSetLayer\",\n");
+            context.Response.Write("      \"value\":{\n");
+            context.Response.Write("        \"geometryType\":\"esriGeometryPolyline\",\n");
+            context.Response.Write("        \"spatialReference\":{\"wkid\":4326},\n");
+            context.Response.Write("        \"features\":[\n");
+            context.Response.Write("          {\n");
+            context.Response.Write("            \"geometry\":{\n");
+            context.Response.Write("              \"paths\":[\n");
+            context.Response.Write("                [\n");
             for (int i = 0; i < path.PointCount; i += 1) {
                 IPoint p = path.get_Point(i);
                 context.Response.Write("                  [");
@@ -150,21 +154,21 @@ public class FlowPath : IHttpHandler {
                 }
                 context.Response.Write("\n");
             }
-            context.Response.Write("                  ]");
-            context.Response.Write("                ]");
-            context.Response.Write("              ]");
-            context.Response.Write("            },");
-            context.Response.Write("            \"attributes\":{");
+            context.Response.Write("                ]\n");
+            context.Response.Write("              ]\n");
+            context.Response.Write("            },\n");
+            context.Response.Write("            \"attributes\":{\n");
             context.Response.Write("              \"Shape_Length\":");
             context.Response.Write(path.Length.ToString());
-            context.Response.Write("            }");
-            context.Response.Write("          }");
-            context.Response.Write("        ]");
-            context.Response.Write("      }");
-            context.Response.Write("    }");
-            context.Response.Write("  ],");
-            context.Response.Write("  \"messages\":[]");
-            context.Response.Write("}");
+            context.Response.Write("\n");
+            context.Response.Write("            }\n");
+            context.Response.Write("          }\n");
+            context.Response.Write("        ]\n");
+            context.Response.Write("      }\n");
+            context.Response.Write("    }\n");
+            context.Response.Write("  ],\n");
+            context.Response.Write("  \"messages\":[]\n");
+            context.Response.Write("}\n");
         } catch (Exception e) {
             context.Response.ContentType = "text/plain";
             context.Response.StatusCode = 500;
@@ -246,7 +250,7 @@ public class FlowPath : IHttpHandler {
                     break;
                 default:
                     bool test = (Convert.ToInt32(value) == Convert.ToInt32(properties.NoDataValue));
-                    throw new Exception("invalid cell value " + flowDir);
+                    //throw new Exception("invalid cell value " + flowDir);
                     dx = dy = 0;
                     break;
             }
