@@ -41,9 +41,8 @@ namespace NatGeo.FieldScope.WatershedTools
                 }
             }
         }
-        
-        private IRasterWorkspace2 m_scratchWorkspace;
-        private IWorkspace m_memoryWorkspace;
+
+        private IWorkspace m_scratchWorkspace;
         private IRasterDataset m_flowAccum;
         private Int32 m_highResAccumThreshold;
         private IRasterDataset[] m_highResFlowDir;
@@ -66,16 +65,9 @@ namespace NatGeo.FieldScope.WatershedTools
             string workspacePath = ConfigurationSettings.AppSettings["Workspace"];
             IWorkspace workspace = workspaceFactory.OpenFromFile(workspacePath, 0);
             IRasterWorkspaceEx rasterWorkspace = (IRasterWorkspaceEx)workspace;
-            
-            IScratchWorkspaceFactory2 scratchFactory = new ScratchWorkspaceFactoryClass();
-            m_scratchWorkspace = scratchFactory.CurrentScratchWorkspace as IRasterWorkspace2;
-            if (m_scratchWorkspace == null) {
-                workspaceFactory = new RasterWorkspaceFactoryClass();
-                m_scratchWorkspace = workspaceFactory.OpenFromFile("C:\\temp", 0) as IRasterWorkspace2;
-            }
-            
-            workspaceFactory = new ShapefileWorkspaceFactoryClass();
-            m_memoryWorkspace = (IWorkspace)workspaceFactory.OpenFromFile("C:\\temp", 0) as IWorkspace;
+
+            IScratchWorkspaceFactory  scratchFactory = new FileGDBScratchWorkspaceFactoryClass();
+            m_scratchWorkspace = scratchFactory.CreateNewScratchWorkspace();
             
             string flowAccumDS = ConfigurationSettings.AppSettings["FlowAccumulation"];
             m_flowAccum = rasterWorkspace.OpenRasterDataset(flowAccumDS);
@@ -198,27 +190,9 @@ namespace NatGeo.FieldScope.WatershedTools
                 
                 IPoint worldOrigin = new PointClass();
                 worldOrigin.PutCoords(flowDirProperties.Extent.XMin, flowDirProperties.Extent.YMin);
-
-                IRasterDataset2 outDS = m_scratchWorkspace.CreateRasterDataset("UpstreamArea" + System.Environment.TickCount.ToString() + ".img",
-                                                                               "IMAGINE Image",
-                                                                               worldOrigin,
-                                                                               flowDirProperties.Width,
-                                                                               flowDirProperties.Height,
-                                                                               flowDirProperties.MeanCellSize().X,
-                                                                               flowDirProperties.MeanCellSize().Y,
-                                                                               1,
-                                                                               rstPixelType.PT_UCHAR,
-                                                                               flowDirProperties.SpatialReference,
-                                                                               false) as IRasterDataset2;
-                ((outDS as IRasterBandCollection).Item(0) as IRasterProps).NoDataValue = 0;
-                IRaster outRaster = outDS.CreateDefaultRaster();
-                IPixelBlock3 outPB = outRaster.CreatePixelBlock(flowDirBlockSize) as IPixelBlock3;
+                
                 byte[,] outData = new byte[flowDirProperties.Width, flowDirProperties.Height];
-                for (int i = 0; i < flowDirProperties.Width; i += 1) {
-                    for (int j = 0; j < flowDirProperties.Height; j += 1) {
-                        outData[i, j] = 0;
-                    }
-                }
+                outData.Initialize();
                 
                 // Enqueue the starting point
                 flowDirectionRaster.MapToPixel(x, y, out col, out row);
@@ -248,8 +222,30 @@ namespace NatGeo.FieldScope.WatershedTools
                     // upper right
                     testPoint(new System.Drawing.Point(pt.X + 1, pt.Y - 1), 8, flowDirData, outData, visited, queue);
                 }
-
+                
                 // Write the output data
+                IRasterDataset2 outDS = ((IRasterWorkspaceEx)m_scratchWorkspace).CreateRasterDataset(
+                        "UARaster" + System.Environment.TickCount.ToString(),
+                        1,
+                        rstPixelType.PT_UCHAR,
+                        new RasterStorageDefClass(),
+                        "",
+                        new RasterDefClass(),
+                        null) as IRasterDataset2;
+                IRaster outRaster = outDS.CreateFullRaster();
+                IRasterProps properties = (IRasterProps)outRaster;
+                properties.Width = flowDirProperties.Width;
+                properties.Height = flowDirProperties.Height;
+                IEnvelope outEnvelope = new EnvelopeClass();
+                outEnvelope.XMin = flowDirProperties.Extent.XMin;
+                outEnvelope.XMax = flowDirProperties.Extent.XMax;
+                outEnvelope.YMin = flowDirProperties.Extent.YMin;
+                outEnvelope.YMax = flowDirProperties.Extent.YMax;
+                properties.Extent = outEnvelope;
+                properties.SpatialReference = flowDirProperties.SpatialReference;
+                properties.NoDataValue = 0;
+                
+                IPixelBlock3 outPB = outRaster.CreatePixelBlock(flowDirBlockSize) as IPixelBlock3; 
                 outPB.set_PixelData(0, outData);
                 IRasterEdit outRasterEdit = outRaster as IRasterEdit;
                 IPnt pbOrigin = new PntClass();
@@ -261,8 +257,8 @@ namespace NatGeo.FieldScope.WatershedTools
                 IConversionOp convert = new RasterConversionOpClass();
                 IFeatureClass resultFC = (IFeatureClass)convert.RasterDataToPolygonFeatureData(
                                                                 (IGeoDataset)outDS,
-                                                                m_memoryWorkspace, 
-                                                                "UpstreamArea" + System.Environment.TickCount.ToString() + ".shp",
+                                                                m_scratchWorkspace, 
+                                                                "UAFeature" + System.Environment.TickCount.ToString(),
                                                                 false
                                                             );
                 int resultID = resultFC.Select(null, esriSelectionType.esriSelectionTypeIDSet, esriSelectionOption.esriSelectionOptionNormal, null).IDs.Next();
