@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
 Project("{E24C65DC-7377-472B-9ABA-BC803B73C61A}") = "restful", ".", "{1C8F4E17-94ED-4AD9-8266-90B65009BF94}"
 	ProjectSection(WebsiteProperties) = preProject
-		TargetFramework = "3.5"
+		TargetFramework = "2.0"
 		Debug.AspNetCompiler.VirtualPath = "/restful"
 		Debug.AspNetCompiler.PhysicalPath = "..\restful\"
 		Debug.AspNetCompiler.TargetPath = "PrecompiledWeb\restful\"
@@ -18,7 +18,7 @@ Project("{E24C65DC-7377-472B-9ABA-BC803B73C61A}") = "restful", ".", "{1C8F4E17-9
 		Release.AspNetCompiler.ForceOverwrite = "true"
 		Release.AspNetCompiler.FixedNames = "false"
 		Release.AspNetCompiler.Debug = "False"
-		VWDPort = "2016"
+		VWDPort = "2760"
 	EndProjectSection
 EndProject
 Global
