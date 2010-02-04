@@ -24,18 +24,16 @@ using ESRI.ArcGIS.GeoAnalyst;
 
 namespace NatGeo.FieldScope.WatershedTools
 {
-    public class UpstreamAreaPage : GPPage
+    public class UpstreamArea : GPPage
     {
-        public UpstreamAreaPage ()
+        public UpstreamArea ()
             : base(esriLicenseExtensionCode.esriLicenseExtensionCodeSpatialAnalyst) { }
         
         protected void Page_Load (object sender, EventArgs evt) {
             try {
                 double x = Double.Parse(HttpUtility.UrlDecode(Context.Request.Params["x"]));
                 double y = Double.Parse(HttpUtility.UrlDecode(Context.Request.Params["y"]));
-
-
-
+                
                 IWorkspaceFactory2 workspaceFactory = new FileGDBWorkspaceFactoryClass();
                 string workspacePath = ConfigurationManager.AppSettings["Workspace"];
                 IWorkspace workspace = workspaceFactory.OpenFromFile(workspacePath, 0);
@@ -233,11 +231,11 @@ namespace NatGeo.FieldScope.WatershedTools
 
                 IConversionOp convert = new RasterConversionOpClass();
                 IFeatureClass resultFC = (IFeatureClass)convert.RasterDataToPolygonFeatureData(
-                                                                (IGeoDataset)outDS,
-                                                                scratchWorkspace,
-                                                                "UAFeature" + System.Environment.TickCount.ToString(),
-                                                                false
-                                                            );
+                        (IGeoDataset)outDS,
+                        scratchWorkspace,
+                        "UAFeature" + System.Environment.TickCount.ToString(),
+                        false
+                    );
                 int resultID = resultFC.Select(null, esriSelectionType.esriSelectionTypeIDSet, esriSelectionOption.esriSelectionOptionNormal, null).IDs.Next();
                 IGeometryCollection result = (IGeometryCollection)resultFC.GetFeature(resultID).Shape;
 
@@ -257,9 +255,9 @@ namespace NatGeo.FieldScope.WatershedTools
                     for (int j = 0; j < ring.PointCount; j += 1) {
                         IPoint p = ring.get_Point(j);
                         Response.Write("            [");
-                        Response.Write(p.X.ToString());
+                        Response.Write(p.X.ToString("N"));
                         Response.Write(", ");
-                        Response.Write(p.Y.ToString());
+                        Response.Write(p.Y.ToString("N"));
                         Response.Write("]");
                         if ((j + 1) < ring.PointCount) {
                             Response.Write(",");
@@ -272,10 +270,10 @@ namespace NatGeo.FieldScope.WatershedTools
                 Response.Write("      },\n");
                 Response.Write("      \"attributes\":{\n");
                 Response.Write("        \"Shape_Length\":");
-                Response.Write(((ICurve)result).Length.ToString());
+                Response.Write(((ICurve)result).Length.ToString("N"));
                 Response.Write(",\n");
                 Response.Write("        \"Shape_Area\":");
-                Response.Write(((IArea)result).Area.ToString());
+                Response.Write(((IArea)result).Area.ToString("N"));
                 Response.Write("\n");
                 Response.Write("      }\n");
                 Response.Write("    }\n");

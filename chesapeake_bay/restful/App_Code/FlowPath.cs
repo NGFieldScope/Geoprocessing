@@ -20,7 +20,7 @@ using ESRI.ArcGIS.DataSourcesGDB;
 
 namespace NatGeo.FieldScope.WatershedTools
 {
-    public class FlowPathPage : GPPage
+    public class FlowPath : GPPage
     {
         private static readonly int MAX_STEPS = 65535;
         
@@ -52,9 +52,8 @@ namespace NatGeo.FieldScope.WatershedTools
                     highResMaxSteps = Int32.Parse(maxSteps);
                 }
 
-                IRasterDataset lowResFlowDir;
                 string lowResDS = ConfigurationManager.AppSettings["LowResolutionFlowDirection"];
-                lowResFlowDir = workspace.OpenRasterDataset(lowResDS);
+                IRasterDataset lowResFlowDir = workspace.OpenRasterDataset(lowResDS);
                 
                 // setup output object
                 object missing = Type.Missing;
@@ -123,9 +122,9 @@ namespace NatGeo.FieldScope.WatershedTools
                 for (int i = 0; i < path.PointCount; i += 1) {
                     IPoint p = path.get_Point(i);
                     Response.Write("            [");
-                    Response.Write(p.X.ToString());
+                    Response.Write(p.X.ToString("N"));
                     Response.Write(", ");
-                    Response.Write(p.Y.ToString());
+                    Response.Write(p.Y.ToString("N"));
                     Response.Write("]");
                     if ((i + 1) < path.PointCount) {
                         Response.Write(",");
@@ -137,7 +136,7 @@ namespace NatGeo.FieldScope.WatershedTools
                 Response.Write("      },\n");
                 Response.Write("      \"attributes\":{\n");
                 Response.Write("        \"Shape_Length\":");
-                Response.Write(path.Length.ToString());
+                Response.Write(path.Length.ToString("N"));
                 Response.Write("\n");
                 Response.Write("      }\n");
                 Response.Write("    }\n");
