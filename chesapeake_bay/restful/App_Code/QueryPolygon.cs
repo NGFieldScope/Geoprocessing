@@ -1,24 +1,13 @@
 ﻿using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
-using System.Net;
-using System.Web;
-using System.Web.Services;
-using System.Web.Configuration;
-using System.Web.Caching;
-using System.Configuration;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using ESRI.ArcGIS.DataManagementTools;
+using System.Configuration;
+using System.Linq;
+using ESRI.ArcGIS.DataSourcesGDB;
 using ESRI.ArcGIS.DataSourcesRaster;
 using ESRI.ArcGIS.esriSystem;
-using ESRI.ArcGIS.Geodatabase;
 using ESRI.ArcGIS.GeoAnalyst;
+using ESRI.ArcGIS.Geodatabase;
 using ESRI.ArcGIS.Geometry;
-using ESRI.ArcGIS.Geoprocessing;
-using ESRI.ArcGIS.Geoprocessor;
-using ESRI.ArcGIS.DataSourcesGDB;
 using ESRI.ArcGIS.SpatialAnalyst;
 
 namespace NatGeo.FieldScope.WatershedTools
@@ -27,77 +16,114 @@ namespace NatGeo.FieldScope.WatershedTools
     {
         public QueryPolygon ()
             : base(esriLicenseExtensionCode.esriLicenseExtensionCodeSpatialAnalyst) { }
-        
-        protected void Page_Load (object sender, EventArgs evt) {
-            try {
-                IWorkspaceFactory2 workspaceFactory = new FileGDBWorkspaceFactoryClass();
-                string workspacePath = ConfigurationManager.AppSettings["Workspace"];
-                IRasterWorkspaceEx workspace = (IRasterWorkspaceEx)workspaceFactory.OpenFromFile(workspacePath, 0);
 
-                IWorkspace scratchWorkspace;
-                IScratchWorkspaceFactory2 scratchFactory = new ScratchWorkspaceFactoryClass();
-                if (scratchFactory.CurrentScratchWorkspace != null) {
-                    scratchWorkspace = scratchFactory.CurrentScratchWorkspace;
-                } else if (scratchFactory.DefaultScratchWorkspace != null) {
-                    scratchWorkspace = scratchFactory.DefaultScratchWorkspace;
-                } else {
-                    scratchWorkspace = scratchFactory.CreateNewScratchWorkspace();
-                }
-                
-                RingClass ring = new RingClass();
-                object missing = Type.Missing;
-                foreach (string pstring in Context.Request.Params["polygon"].Split(',')) {
-                    string[] coords = pstring.Split(' ');
-                    IPoint point = new PointClass();
-                    point.PutCoords(Double.Parse(coords[0]), Double.Parse(coords[1]));
-                    ring.AddPoint(point, ref missing, ref missing);
-                }
-                PolygonClass polygon = new PolygonClass();
-                polygon.AddGeometry(ring, ref missing, ref missing);
-                IZonalOp tabulateOp = new RasterZonalOp();
-                IExtractionOp extractOp = new RasterExtractionOpClass();
+        override protected string Compute_Result () {
+            string[] points = Context.Request.Params["polygon"].Split(',');
+            string[] layers = Context.Request.Params["layers"].Split(',');
 
-                Dictionary<string, Dictionary<string, Double>> results =
-                    new Dictionary<string, Dictionary<string, Double>>();
-                
-                foreach (string layer in Context.Request.Params["layers"].Split(',')) {
-                    Dictionary<string, Double> layerStats = new Dictionary<string, double>();
-                    IRasterDataset layerDS = workspace.OpenRasterDataset(layer);
-                    IRaster layerRaster = layerDS.CreateDefaultRaster();
-                    IRasterBand layerBand = (layerRaster as IRasterBandCollection).Item(0);
-                    if (layerBand.AttributeTable != null) {
-
-                        ITable tabs = tabulateOp.TabulateArea(polygon, layerRaster);
-
-
-                    } else {
-                        IRaster extract = extractOp.Polygon(layerDS as IGeoDataset, polygon, true) as IRaster;
-                        IRasterBand extractBand = (extract as IRasterBandCollection).Item(0);
-                        IRasterStatistics extractStats = extractBand.Statistics;
-                        extractStats.Recalculate();
-                        layerStats.Add("MIN", extractStats.Minimum);
-                        layerStats.Add("MAX", extractStats.Maximum);
-                        layerStats.Add("MEAN", extractStats.Mean);
-                        layerStats.Add("STDEV", extractStats.StandardDeviation);
-                        results.Add(layer, layerStats);
-                    }
-                }
-
-
-
-
-
-
-
-
-            } catch (Exception e) {
-                Response.ContentType = "text/plain";
-                Response.StatusCode = 500;
-                Response.Write("ERROR\n");
-                Response.Write(e.ToString());
-                Response.Write("\n");
-                Response.Write(e.StackTrace);
+            IWorkspaceFactory2 workspaceFactory = new FileGDBWorkspaceFactoryClass();
+            string workspacePath = ConfigurationManager.AppSettings["QueryPolygon.Workspace"];
+            IRasterWorkspaceEx workspace = (IRasterWorkspaceEx)workspaceFactory.OpenFromFile(workspacePath, 0);
+            
+            IWorkspaceFactory2 scratchFactory = new InMemoryWorkspaceFactoryClass();
+            IName sWName = scratchFactory.Create("", "QueryPolygon", null, 0) as IName;
+            IFeatureWorkspace scratchWorkspace = sWName.Open() as IFeatureWorkspace;
+            RingClass ring = new RingClass();
+            object missing = Type.Missing;
+            foreach (string pstring in points) {
+                string[] coords = pstring.Split(' ');
+                IPoint point = new PointClass();
+                point.PutCoords(Double.Parse(coords[0]), Double.Parse(coords[1]));
+                ring.AddPoint(point, ref missing, ref missing);
             }
+            PolygonClass polygon = new PolygonClass();
+            polygon.AddGeometry(ring, ref missing, ref missing);
+            IFeatureClass polyFC = CreateFeatureClass(scratchWorkspace as IFeatureWorkspace, "QPZone");
+            IFeature polyFeature = polyFC.CreateFeature();
+            //polyFeature.set_Value(1, 0);
+            polyFeature.Shape = polygon;
+            polyFeature.Store();
+            IFeatureClassDescriptor zone = new FeatureClassDescriptorClass();
+            zone.Create(polyFC, null, "OBJECTID");
+            
+            IZonalOp zonalOp = new RasterZonalOpClass();
+            
+            Dictionary<string, Dictionary<string, double>> results =
+                new Dictionary<string, Dictionary<string, double>>();
+
+            foreach (string layer in layers) {
+                Dictionary<string, Double> result = new Dictionary<string, double>();
+                IRasterDataset layerDS = workspace.OpenRasterDataset(layer);
+                IRaster layerRaster = layerDS.CreateDefaultRaster();
+                ITable layerTable = (layerRaster as IRaster2).AttributeTable;
+                if (layerTable.Fields.FieldCount > 3) {
+                    IRasterDescriptor desc = new RasterDescriptorClass();
+                    desc.Create(layerRaster, null, layerTable.Fields.get_Field(3).Name);
+                    ITable table = zonalOp.TabulateArea(zone as IGeoDataset, desc as IGeoDataset);
+                    IRow row = table.Search(null, true).NextRow();
+                    Dictionary<string, Double> temp = new Dictionary<string, double>();
+                    double totalArea = 0.0;
+                    for (int i = 2; i < table.Fields.FieldCount; i += 1) {
+                        double area = Convert.ToDouble(row.get_Value(i));
+                        totalArea += area;
+                        temp.Add(table.Fields.get_Field(i).Name, area);
+                    }
+                    foreach (KeyValuePair<string, double> entry in temp) {
+                        result.Add(entry.Key, entry.Value / totalArea);
+                    }
+                } else {
+                    ITable table = zonalOp.ZonalStatisticsAsTable(zone as IGeoDataset, layerRaster as IGeoDataset, true);
+                    IRow row = table.Search(null, true).NextRow();
+                    result.Add("COUNT", Convert.ToDouble(row.get_Value(2)));
+                    result.Add("AREA", Convert.ToDouble(row.get_Value(3)));
+                    result.Add("MIN", Convert.ToDouble(row.get_Value(4)));
+                    result.Add("MAX", Convert.ToDouble(row.get_Value(5)));
+                    result.Add("MEAN", Convert.ToDouble(row.get_Value(7)));
+                    result.Add("STD", Convert.ToDouble(row.get_Value(8)));
+                }
+                results.Add(layer, result);
+            }
+
+            return "{\n  \"result\" : [\n" +
+                (from layerResults in results
+                 select String.Format("    {{\n      \"layer\" : \"{0}\",\n      \"values\" : {{\n{1}\n      }}\n    }}",
+                    layerResults.Key,
+                    (from resultValues in layerResults.Value
+                     select String.Format("        \"{0}\" : {1:0.################}", 
+                        resultValues.Key,
+                        resultValues.Value)
+                    ).Aggregate((a, b) => a + ",\n" + b))
+                ).Aggregate((a, b) => a + ",\n" + b) +
+                "\n  ]\n}";
+        }
+        
+		private IFeatureClass CreateFeatureClass (IFeatureWorkspace workspace, string name) {
+			IFieldsEdit fields = new FieldsClass();
+
+			IFieldEdit field = new FieldClass();
+            field.Type_2 = esriFieldType.esriFieldTypeOID;
+			field.Name_2 = "OBJECTID";
+			field.AliasName_2 = "OBJECTID";
+			fields.AddField(field);
+
+            ISpatialReferenceFactory srFactory = new SpatialReferenceEnvironmentClass();
+            ISpatialReference sr = srFactory.CreateGeographicCoordinateSystem((int)esriSRGeoCSType.esriSRGeoCS_WGS1984);
+            sr.SetDomain(-180, 180, -90, 90);
+
+			IGeometryDefEdit geom = new GeometryDefClass();
+			geom.GeometryType_2 = esriGeometryType.esriGeometryPolygon;
+			geom.SpatialReference_2 = sr;
+			geom.HasM_2 = false;
+			geom.HasZ_2 = false;
+			
+			field = new FieldClass();
+			field.Name_2 = "SHAPE";
+			field.AliasName_2 = "SHAPE";
+			field.Type_2 = esriFieldType.esriFieldTypeGeometry;
+			field.GeometryDef_2 = geom;
+			fields.AddField(field);
+
+            return workspace.CreateFeatureClass(name, fields, null, null, esriFeatureType.esriFTSimple, "SHAPE", "");
         }
     }
 }

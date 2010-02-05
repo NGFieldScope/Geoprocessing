@@ -1,22 +1,11 @@
 ﻿using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
-using System.Net;
-using System.Web;
-using System.Web.Services;
-using System.Web.Configuration;
-using System.Web.Caching;
 using System.Configuration;
 using System.Runtime.InteropServices;
-using ESRI.ArcGIS.DataManagementTools;
+using System.Web;
+using ESRI.ArcGIS.DataSourcesGDB;
 using ESRI.ArcGIS.DataSourcesRaster;
-using ESRI.ArcGIS.esriSystem;
 using ESRI.ArcGIS.Geodatabase;
 using ESRI.ArcGIS.Geometry;
-using ESRI.ArcGIS.Geoprocessing;
-using ESRI.ArcGIS.Geoprocessor;
-using ESRI.ArcGIS.DataSourcesGDB;
 
 namespace NatGeo.FieldScope.WatershedTools
 {
@@ -24,139 +13,121 @@ namespace NatGeo.FieldScope.WatershedTools
     {
         private static readonly int MAX_STEPS = 65535;
         
-        protected void Page_Load (object sender, EventArgs evt) {
-            try {
-                // Read all our parameters
-                double x = Double.Parse(HttpUtility.UrlDecode(Request.Params["x"]));
-                double y = Double.Parse(HttpUtility.UrlDecode(Request.Params["y"]));
-                
-                IWorkspaceFactory2 workspaceFactory = new FileGDBWorkspaceFactoryClass();
-                string workspacePath = ConfigurationManager.AppSettings["Workspace"];
-                IRasterWorkspaceEx workspace = (IRasterWorkspaceEx)workspaceFactory.OpenFromFile(workspacePath, 0);
-                
-                IRasterDataset[] highResFlowDir = new IRasterDataset[0];
-                string hiResDS = ConfigurationManager.AppSettings["HighResolutionFlowDirection"];
-                if (hiResDS != null) {
-                    string[] hiResDSList = hiResDS.Split(';');
-                    if ((hiResDSList.Length > 0) && (hiResDSList[0].Length > 0)) {
-                        highResFlowDir = new IRasterDataset[hiResDSList.Length];
-                        for (int i = 0; i < hiResDSList.Length; i += 1) {
-                            highResFlowDir[i] = workspace.OpenRasterDataset(hiResDSList[i]);
-                        }
+        override protected string Compute_Result () {
+            // Read all our parameters
+            double x = Double.Parse(HttpUtility.UrlDecode(Request.Params["x"]));
+            double y = Double.Parse(HttpUtility.UrlDecode(Request.Params["y"]));
+            
+            IWorkspaceFactory2 workspaceFactory = new FileGDBWorkspaceFactoryClass();
+            string workspacePath = ConfigurationManager.AppSettings["FlowPath.Workspace"];
+            IRasterWorkspaceEx workspace = (IRasterWorkspaceEx)workspaceFactory.OpenFromFile(workspacePath, 0);
+            
+            IRasterDataset[] highResFlowDir = new IRasterDataset[0];
+            string hiResDS = ConfigurationManager.AppSettings["FlowPath.HighResolutionFlowDirection"];
+            if (hiResDS != null) {
+                string[] hiResDSList = hiResDS.Split(';');
+                if ((hiResDSList.Length > 0) && (hiResDSList[0].Length > 0)) {
+                    highResFlowDir = new IRasterDataset[hiResDSList.Length];
+                    for (int i = 0; i < hiResDSList.Length; i += 1) {
+                        highResFlowDir[i] = workspace.OpenRasterDataset(hiResDSList[i]);
                     }
                 }
-
-                Int32 highResMaxSteps = 100;
-                string maxSteps = ConfigurationManager.AppSettings["HighResolutionMaxSteps"];
-                if (maxSteps != null) {
-                    highResMaxSteps = Int32.Parse(maxSteps);
-                }
-
-                string lowResDS = ConfigurationManager.AppSettings["LowResolutionFlowDirection"];
-                IRasterDataset lowResFlowDir = workspace.OpenRasterDataset(lowResDS);
-                
-                // setup output object
-                object missing = Type.Missing;
-                PathClass path = new PathClass();
-                PointClass point = new PointClass();
-                point.PutCoords(x, y);
-                path.AddPoint(CopyPoint(point), ref missing, ref missing);
-
-                // (possibly) move along high-res flow path until we reach the edge of the watershed
-                for (int i = 0; i < highResFlowDir.Length; i += 1) {
-                    IRaster hiRes = highResFlowDir[i].CreateDefaultRaster();
-                    IRaster2 hiResRaster = hiRes as IRaster2;
-                    IRasterBand hiResBand = (hiResRaster as IRasterBandCollection).Item(0);
-                    RasterProperties hiResProperties = new RasterProperties(hiResBand);
-                    int col;
-                    int row;
-                    hiResRaster.MapToPixel(x, y, out col, out row);
-                    if ((col >= 0) && (col < hiResProperties.Width) && (row >= 0) && (row < hiResProperties.Height)) {
-                        object value = hiResRaster.GetPixelValue(0, col, row);
-                        if ((value != null) && (!value.Equals(hiResProperties.NoDataValue))) {
-                            IRawPixels hiResPixels = hiResBand as IRawPixels;
-                            IPnt hiResBlockSize = new Pnt();
-                            hiResBlockSize.SetCoords(hiResProperties.Width, hiResProperties.Height);
-                            IPixelBlock hiResPB = hiRes.CreatePixelBlock(hiResBlockSize);
-                            IPnt hiResOrigin = new Pnt();
-                            hiResOrigin.SetCoords(0, 0);
-                            hiResPixels.Read(hiResOrigin, hiResPB);
-                            System.Array hiResData = (System.Array)(hiResPB as IPixelBlock3).get_PixelDataByRef(0);
-                            TracePath(path, point, hiResRaster, hiResProperties, hiResData, highResMaxSteps);
-                            Marshal.ReleaseComObject(hiRes);
-                            break;
-                        }
-                    }
-                    Marshal.ReleaseComObject(hiRes);
-                }
-
-                // Then load and trace the low-resolution flow path
-                IRaster loRes = lowResFlowDir.CreateDefaultRaster();
-                IRaster2 loResRaster = loRes as IRaster2;
-                IRasterBand loResBand = (loResRaster as IRasterBandCollection).Item(0);
-                IRawPixels loResPixels = loResBand as IRawPixels;
-                RasterProperties loResProperties = new RasterProperties(loResBand);
-                IPnt loResBlockSize = new Pnt();
-                loResBlockSize.SetCoords(loResProperties.Width, loResProperties.Height);
-                IPixelBlock loResPB = loRes.CreatePixelBlock(loResBlockSize);
-                IPnt loResOrigin = new Pnt();
-                loResOrigin.SetCoords(0, 0);
-                loResPixels.Read(loResOrigin, loResPB);
-                System.Array loResData = (System.Array)(loResPB as IPixelBlock3).get_PixelDataByRef(0);
-                // trace the low-resolution raster until it ends, or until we go MAX_STEPS steps 
-                // (to guard against infinite loops in input raster)
-                TracePath(path, point, loResRaster, loResProperties, loResData, MAX_STEPS);
-                Marshal.ReleaseComObject(loRes);
-
-                Response.ContentType = "text/plain";
-                //Response.ContentType = "application/json";
-                Response.StatusCode = 200;
-                Response.Write("{\n");
-                Response.Write("  \"geometryType\":\"esriGeometryPolyline\",\n");
-                Response.Write("  \"spatialReference\":{\"wkid\":4326},\n");
-                Response.Write("  \"features\":[\n");
-                Response.Write("    {\n");
-                Response.Write("      \"geometry\":{\n");
-                Response.Write("        \"paths\":[\n");
-                Response.Write("          [\n");
-                for (int i = 0; i < path.PointCount; i += 1) {
-                    IPoint p = path.get_Point(i);
-                    Response.Write("            [");
-                    Response.Write(p.X.ToString("N"));
-                    Response.Write(", ");
-                    Response.Write(p.Y.ToString("N"));
-                    Response.Write("]");
-                    if ((i + 1) < path.PointCount) {
-                        Response.Write(",");
-                    }
-                    Response.Write("\n");
-                }
-                Response.Write("          ]\n");
-                Response.Write("        ]\n");
-                Response.Write("      },\n");
-                Response.Write("      \"attributes\":{\n");
-                Response.Write("        \"Shape_Length\":");
-                Response.Write(path.Length.ToString("N"));
-                Response.Write("\n");
-                Response.Write("      }\n");
-                Response.Write("    }\n");
-                Response.Write("  ]\n");
-                Response.Write("}\n");
-
-
-                foreach (object raster in highResFlowDir) {
-                    Marshal.ReleaseComObject(raster);
-                }
-                Marshal.ReleaseComObject(lowResFlowDir);
-
-
-            } catch (Exception e) {
-                Response.ContentType = "text/plain";
-                Response.StatusCode = 500;
-                Response.Write(e.ToString());
-                Response.Write("\n");
-                Response.Write(e.StackTrace);
             }
+
+            Int32 highResMaxSteps = 100;
+            string maxSteps = ConfigurationManager.AppSettings["FlowPath.HighResolutionMaxSteps"];
+            if (maxSteps != null) {
+                highResMaxSteps = Int32.Parse(maxSteps);
+            }
+
+            string lowResDS = ConfigurationManager.AppSettings["FlowPath.LowResolutionFlowDirection"];
+            IRasterDataset lowResFlowDir = workspace.OpenRasterDataset(lowResDS);
+            
+            // setup output object
+            object missing = Type.Missing;
+            PathClass path = new PathClass();
+            PointClass point = new PointClass();
+            point.PutCoords(x, y);
+            path.AddPoint(CopyPoint(point), ref missing, ref missing);
+
+            // (possibly) move along high-res flow path until we reach the edge of the watershed
+            for (int i = 0; i < highResFlowDir.Length; i += 1) {
+                IRaster hiRes = highResFlowDir[i].CreateDefaultRaster();
+                IRaster2 hiResRaster = hiRes as IRaster2;
+                IRasterBand hiResBand = (hiResRaster as IRasterBandCollection).Item(0);
+                RasterProperties hiResProperties = new RasterProperties(hiResBand);
+                int col;
+                int row;
+                hiResRaster.MapToPixel(x, y, out col, out row);
+                if ((col >= 0) && (col < hiResProperties.Width) && (row >= 0) && (row < hiResProperties.Height)) {
+                    object value = hiResRaster.GetPixelValue(0, col, row);
+                    if ((value != null) && (!value.Equals(hiResProperties.NoDataValue))) {
+                        IRawPixels hiResPixels = hiResBand as IRawPixels;
+                        IPnt hiResBlockSize = new Pnt();
+                        hiResBlockSize.SetCoords(hiResProperties.Width, hiResProperties.Height);
+                        IPixelBlock hiResPB = hiRes.CreatePixelBlock(hiResBlockSize);
+                        IPnt hiResOrigin = new Pnt();
+                        hiResOrigin.SetCoords(0, 0);
+                        hiResPixels.Read(hiResOrigin, hiResPB);
+                        System.Array hiResData = (System.Array)(hiResPB as IPixelBlock3).get_PixelDataByRef(0);
+                        TracePath(path, point, hiResRaster, hiResProperties, hiResData, highResMaxSteps);
+                        Marshal.ReleaseComObject(hiRes);
+                        break;
+                    }
+                }
+                Marshal.ReleaseComObject(hiRes);
+            }
+
+            // Then load and trace the low-resolution flow path
+            IRaster loRes = lowResFlowDir.CreateDefaultRaster();
+            IRaster2 loResRaster = loRes as IRaster2;
+            IRasterBand loResBand = (loResRaster as IRasterBandCollection).Item(0);
+            IRawPixels loResPixels = loResBand as IRawPixels;
+            RasterProperties loResProperties = new RasterProperties(loResBand);
+            IPnt loResBlockSize = new Pnt();
+            loResBlockSize.SetCoords(loResProperties.Width, loResProperties.Height);
+            IPixelBlock loResPB = loRes.CreatePixelBlock(loResBlockSize);
+            IPnt loResOrigin = new Pnt();
+            loResOrigin.SetCoords(0, 0);
+            loResPixels.Read(loResOrigin, loResPB);
+            System.Array loResData = (System.Array)(loResPB as IPixelBlock3).get_PixelDataByRef(0);
+            // trace the low-resolution raster until it ends, or until we go MAX_STEPS steps 
+            // (to guard against infinite loops in input raster)
+            TracePath(path, point, loResRaster, loResProperties, loResData, MAX_STEPS);
+            Marshal.ReleaseComObject(loRes);
+
+            string result = "{\n  \"result\" : {\n" +
+                "    \"geometryType\" : \"esriGeometryPolyline\",\n" +
+                "    \"spatialReference\" : { \"wkid\" : 4326 },\n" +
+                "    \"features\" : [\n" +
+                "      {\n" +
+                "        \"geometry\" : {\n" +
+                "          \"paths\" : [\n" +
+                "            [\n";
+            for (int i = 0; i < path.PointCount; i += 1) {
+                IPoint p = path.get_Point(i);
+                result += String.Format("              [ {0:0.################}, {1:0.################} ]{2}\n",
+                                        p.X,
+                                        p.Y,
+                                        ((i == (path.PointCount - 1)) ? "" : ","));
+            }
+            result += "            ]\n" + 
+                      "          ]\n" + 
+                      "        },\n" + 
+                      "        \"attributes\" : {\n" +
+                      String.Format("          \"Shape_Length\" : {0:0.################}\n", path.Length) +
+                      "        }\n" + 
+                      "      }\n" +
+                      "    ]\n" +
+                      "  }\n" +
+                      "}";
+
+            foreach (object raster in highResFlowDir) {
+                Marshal.ReleaseComObject(raster);
+            }
+            Marshal.ReleaseComObject(lowResFlowDir);
+
+            return result;
         }
 
         private void TracePath(PathClass path,

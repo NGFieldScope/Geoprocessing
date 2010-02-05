@@ -1,22 +1,9 @@
 ﻿using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
-using System.Net;
-using System.Web;
-using System.Web.Services;
-using System.Web.Configuration;
-using System.Web.Caching;
 using System.Web.UI;
-using System.Configuration;
-using ESRI.ArcGIS.DataManagementTools;
 using ESRI.ArcGIS.DataSourcesRaster;
 using ESRI.ArcGIS.esriSystem;
 using ESRI.ArcGIS.Geodatabase;
 using ESRI.ArcGIS.Geometry;
-using ESRI.ArcGIS.Geoprocessing;
-using ESRI.ArcGIS.Geoprocessor;
-using ESRI.ArcGIS.DataSourcesGDB;
 
 namespace NatGeo.FieldScope.WatershedTools
 {
@@ -48,7 +35,7 @@ namespace NatGeo.FieldScope.WatershedTools
                 Extent.YMax = props.Extent.YMax;
             }
         }
-
+        
         protected static IPoint CopyPoint (IPoint pt) {
             IPoint newPt = new PointClass();
             newPt.PutCoords(pt.X, pt.Y);
@@ -65,6 +52,29 @@ namespace NatGeo.FieldScope.WatershedTools
         protected GPPage (params esriLicenseExtensionCode[] extensions) : this() {
             foreach (esriLicenseExtensionCode code in extensions) {
                 m_aoInit.CheckOutExtension(code);
+            }
+        }
+
+        protected abstract string Compute_Result ();
+
+        protected void Page_Load (object sender, EventArgs evt) {
+            //Response.ContentType = "application/json";
+            Response.ContentType = "text/plain";
+            try {
+                string result = Compute_Result();
+                Response.StatusCode = 200;
+                Response.Write(result);
+            } catch (Exception e) {
+                Response.StatusCode = 500;
+                Response.Write(
+                    "{\n  \"error\" : {\n    \"type\" : \"" +
+                    e.GetType().ToString().Replace("\"", "\\\"") +
+                    "\",\n    \"message\" : \"" +
+                    e.Message.Replace("\"", "\\\"") +
+                    "\",\n    \"stackTrace\" : \"" +
+                    e.StackTrace.Replace("\"", "\\\"") +
+                    "\"\n  }\n}"
+                );
             }
         }
     }
