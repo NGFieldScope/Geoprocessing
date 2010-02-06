@@ -238,7 +238,7 @@ namespace NatGeo.FieldScope.WatershedTools
                 IPointCollection ring = (IPointCollection)gc.get_Geometry(i);
                 for (int j = 0; j < ring.PointCount; j += 1) {
                     IPoint p = ring.get_Point(j);
-                    result += String.Format("              [ {0:0.################}, {1:0.################} ]{2}\n",
+                    result += String.Format("              [ {0:0.########}, {1:0.########} ]{2}\n",
                                             p.X,
                                             p.Y,
                                             ((j == (ring.PointCount - 1)) ? "" : ","));
@@ -249,8 +249,8 @@ namespace NatGeo.FieldScope.WatershedTools
                 "          ]\n" +
                 "        },\n" +
                 "        \"attributes\" : {\n" +
-                String.Format("          \"Shape_Length\" : {0:0.################},\n" +
-                              "          \"Shape_Area\" : {1:0.################}\n",
+                String.Format("          \"Shape_Length\" : {0:0.########},\n" +
+                              "          \"Shape_Area\" : {1:0.########}\n",
                               ((ICurve)gc).Length,
                               ((IArea)gc).Area) +
                 "        }\n" +
