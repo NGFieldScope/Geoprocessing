@@ -19,7 +19,7 @@ namespace NatGeo.FieldScope.WatershedTools
 
         override protected string Compute_Result () {
             string[] points = Context.Request.Params["polygon"].Split(',');
-            string[] layers = Context.Request.Params["layers"].Split(',');
+            string layer = Context.Request.Params["layer"];
 
             IWorkspaceFactory2 workspaceFactory = new FileGDBWorkspaceFactoryClass();
             string workspacePath = ConfigurationManager.AppSettings["QueryPolygon.Workspace"];
@@ -47,54 +47,44 @@ namespace NatGeo.FieldScope.WatershedTools
             zone.Create(polyFC, null, "OBJECTID");
             
             IZonalOp zonalOp = new RasterZonalOpClass();
-            
-            Dictionary<string, Dictionary<string, double>> results =
-                new Dictionary<string, Dictionary<string, double>>();
-
-            foreach (string layer in layers) {
-                Dictionary<string, Double> result = new Dictionary<string, double>();
-                IRasterDataset layerDS = workspace.OpenRasterDataset(layer);
-                IRaster layerRaster = layerDS.CreateDefaultRaster();
-                ITable layerTable = (layerRaster as IRaster2).AttributeTable;
-                if (layerTable.Fields.FieldCount > 3) {
-                    IRasterDescriptor desc = new RasterDescriptorClass();
-                    desc.Create(layerRaster, null, layerTable.Fields.get_Field(3).Name);
-                    ITable table = zonalOp.TabulateArea(zone as IGeoDataset, desc as IGeoDataset);
-                    IRow row = table.Search(null, true).NextRow();
-                    Dictionary<string, Double> temp = new Dictionary<string, double>();
-                    double totalArea = 0.0;
-                    for (int i = 2; i < table.Fields.FieldCount; i += 1) {
-                        double area = Convert.ToDouble(row.get_Value(i));
-                        totalArea += area;
-                        temp.Add(table.Fields.get_Field(i).Name, area);
-                    }
-                    foreach (KeyValuePair<string, double> entry in temp) {
-                        result.Add(entry.Key, entry.Value / totalArea);
-                    }
-                } else {
-                    ITable table = zonalOp.ZonalStatisticsAsTable(zone as IGeoDataset, layerRaster as IGeoDataset, true);
-                    IRow row = table.Search(null, true).NextRow();
-                    result.Add("COUNT", Convert.ToDouble(row.get_Value(2)));
-                    result.Add("AREA", Convert.ToDouble(row.get_Value(3)));
-                    result.Add("MIN", Convert.ToDouble(row.get_Value(4)));
-                    result.Add("MAX", Convert.ToDouble(row.get_Value(5)));
-                    result.Add("MEAN", Convert.ToDouble(row.get_Value(7)));
-                    result.Add("STD", Convert.ToDouble(row.get_Value(8)));
+            Dictionary<string, Double> result = new Dictionary<string, double>();
+            IRasterDataset layerDS = workspace.OpenRasterDataset(layer);
+            IRaster layerRaster = layerDS.CreateDefaultRaster();
+            ITable layerTable = (layerRaster as IRaster2).AttributeTable;
+            if (layerTable.Fields.FieldCount > 3) {
+                IRasterDescriptor desc = new RasterDescriptorClass();
+                desc.Create(layerRaster, null, layerTable.Fields.get_Field(3).Name);
+                ITable table = zonalOp.TabulateArea(zone as IGeoDataset, desc as IGeoDataset);
+                IRow row = table.Search(null, true).NextRow();
+                Dictionary<string, Double> temp = new Dictionary<string, double>();
+                double totalArea = 0.0;
+                for (int i = 2; i < table.Fields.FieldCount; i += 1) {
+                    double area = Convert.ToDouble(row.get_Value(i));
+                    totalArea += area;
+                    temp.Add(table.Fields.get_Field(i).Name, area);
                 }
-                results.Add(layer, result);
+                foreach (KeyValuePair<string, double> entry in temp) {
+                    result.Add(entry.Key, entry.Value / totalArea);
+                }
+                result.Add("AREA", Math.Abs(polygon.Area));
+            } else {
+                ITable table = zonalOp.ZonalStatisticsAsTable(zone as IGeoDataset, layerRaster as IGeoDataset, true);
+                IRow row = table.Search(null, true).NextRow();
+                result.Add("COUNT", Convert.ToDouble(row.get_Value(2)));
+                result.Add("AREA", Convert.ToDouble(row.get_Value(3)));
+                result.Add("MIN", Convert.ToDouble(row.get_Value(4)));
+                result.Add("MAX", Convert.ToDouble(row.get_Value(5)));
+                result.Add("MEAN", Convert.ToDouble(row.get_Value(7)));
+                result.Add("STD", Convert.ToDouble(row.get_Value(8)));
             }
 
-            return "{\n  \"result\" : [\n" +
-                (from layerResults in results
-                 select String.Format("    {{\n      \"layer\" : \"{0}\",\n      \"values\" : {{\n{1}\n      }}\n    }}",
-                    layerResults.Key,
-                    (from resultValues in layerResults.Value
-                     select String.Format("        \"{0}\" : {1:0.################}", 
-                        resultValues.Key,
-                        resultValues.Value)
-                    ).Aggregate((a, b) => a + ",\n" + b))
-                ).Aggregate((a, b) => a + ",\n" + b) +
-                "\n  ]\n}";
+            return "{\n  \"result\" : {\n" +
+                    (from value in result
+                     select String.Format("    \"{0}\" : {1:0.########}",
+                        value.Key,
+                        value.Value)
+                    ).Aggregate((a, b) => a + ",\n" + b) +
+                "\n  }\n}";
         }
         
 		private IFeatureClass CreateFeatureClass (IFeatureWorkspace workspace, string name) {

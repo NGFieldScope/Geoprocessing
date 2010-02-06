@@ -106,7 +106,7 @@ namespace NatGeo.FieldScope.WatershedTools
                 "            [\n";
             for (int i = 0; i < path.PointCount; i += 1) {
                 IPoint p = path.get_Point(i);
-                result += String.Format("              [ {0:0.################}, {1:0.################} ]{2}\n",
+                result += String.Format("              [ {0:0.########}, {1:0.########} ]{2}\n",
                                         p.X,
                                         p.Y,
                                         ((i == (path.PointCount - 1)) ? "" : ","));
@@ -115,7 +115,7 @@ namespace NatGeo.FieldScope.WatershedTools
                       "          ]\n" + 
                       "        },\n" + 
                       "        \"attributes\" : {\n" +
-                      String.Format("          \"Shape_Length\" : {0:0.################}\n", path.Length) +
+                      String.Format("          \"Shape_Length\" : {0:0.########}\n", path.Length) +
                       "        }\n" + 
                       "      }\n" +
                       "    ]\n" +
