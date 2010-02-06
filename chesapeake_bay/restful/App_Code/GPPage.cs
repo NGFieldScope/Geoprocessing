@@ -58,14 +58,19 @@ namespace NatGeo.FieldScope.WatershedTools
         protected abstract string Compute_Result ();
 
         protected void Page_Load (object sender, EventArgs evt) {
-            //Response.ContentType = "application/json";
-            Response.ContentType = "text/plain";
+            if (Context.IsDebuggingEnabled) {
+                Response.ContentType = "text/plain";
+            } else {
+                Response.ContentType = "application/json";
+            }
             try {
                 string result = Compute_Result();
                 Response.StatusCode = 200;
                 Response.Write(result);
             } catch (Exception e) {
-                Response.StatusCode = 500;
+                // This really ought to be status code 500, but Flex is too stupid
+                // to retrive the error details if we return a status other than OK
+                Response.StatusCode = 200;
                 Response.Write(
                     "{\n  \"error\" : {\n    \"type\" : \"" +
                     e.GetType().ToString().Replace("\"", "\\\"") +
