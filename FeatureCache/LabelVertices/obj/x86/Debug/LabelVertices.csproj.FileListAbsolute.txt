@@ -1,0 +1,5 @@
+C:\Users\Administrator\Documents\Visual Studio 2010\Projects\GenerateGrid\LabelVertices\obj\x86\Debug\ResolveAssemblyReference.cache
+C:\Users\Administrator\Documents\Visual Studio 2010\Projects\GenerateGrid\LabelVertices\bin\Debug\LabelVertices.exe
+C:\Users\Administrator\Documents\Visual Studio 2010\Projects\GenerateGrid\LabelVertices\bin\Debug\LabelVertices.pdb
+C:\Users\Administrator\Documents\Visual Studio 2010\Projects\GenerateGrid\LabelVertices\obj\x86\Debug\LabelVertices.exe
+C:\Users\Administrator\Documents\Visual Studio 2010\Projects\GenerateGrid\LabelVertices\obj\x86\Debug\LabelVertices.pdb
