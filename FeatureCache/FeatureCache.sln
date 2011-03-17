@@ -5,6 +5,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GenerateGrid", "GenerateGri
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LabelVertices", "LabelVertices\LabelVertices.csproj", "{985B01EB-6539-4235-A512-336903280C37}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimplifyAndClip", "SimplifyAndClip\SimplifyAndClip.csproj", "{2BA833C1-6C06-45A7-A4DC-BC334AAB4895}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
@@ -19,6 +21,10 @@ Global
 		{985B01EB-6539-4235-A512-336903280C37}.Debug|x86.Build.0 = Debug|x86
 		{985B01EB-6539-4235-A512-336903280C37}.Release|x86.ActiveCfg = Release|x86
 		{985B01EB-6539-4235-A512-336903280C37}.Release|x86.Build.0 = Release|x86
+		{2BA833C1-6C06-45A7-A4DC-BC334AAB4895}.Debug|x86.ActiveCfg = Debug|x86
+		{2BA833C1-6C06-45A7-A4DC-BC334AAB4895}.Debug|x86.Build.0 = Debug|x86
+		{2BA833C1-6C06-45A7-A4DC-BC334AAB4895}.Release|x86.ActiveCfg = Release|x86
+		{2BA833C1-6C06-45A7-A4DC-BC334AAB4895}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

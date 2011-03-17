@@ -30,7 +30,6 @@ namespace LabelVertices
         }
 
         static void CopyAndLabel (IFeatureClass inFC, IFeatureWorkspace destination, String name) {
-            object missing = Type.Missing;
             IFieldsEdit outFields = new FieldsClass();
             ISpatialReference outSR = null;
             for (int i = 0; i < inFC.Fields.FieldCount; i += 1) {
@@ -80,7 +79,8 @@ namespace LabelVertices
                     RingClass outExtRing = new RingClass();
                     for (int j = 0; j < inExtRing.PointCount; j += 1) {
                         IPoint point = inExtRing.get_Point(j);
-                        point.M = vIndex++;
+                        point.M = vIndex;
+                        vIndex += 2;
                         outExtRing.AddPoint(point);
                     }
                     outShape.AddGeometry(outExtRing);
@@ -92,7 +92,8 @@ namespace LabelVertices
                         RingClass outIntRing = new RingClass();
                         for (int k = 0; k < inIntRing.PointCount; k += 1) {
                             IPoint point = inExtRing.get_Point(k);
-                            point.M = vIndex++;
+                            point.M = vIndex;
+                            vIndex += 2;
                             outIntRing.AddPoint(point);
                         }
                         outShape.AddGeometry(outIntRing);
