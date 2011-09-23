@@ -4,8 +4,7 @@ import java.util.TimeZone;
 import ucar.ma2.Array;
 import ucar.ma2.ArrayShort;
 import ucar.ma2.DataType;
-import ucar.ma2.Index;
-import ucar.ma2.Index3D;
+import ucar.ma2.Index2D;
 import ucar.nc2.Dimension;
 import ucar.nc2.NetcdfFileWriteable;
 import ucar.nc2.Variable;
@@ -44,8 +43,7 @@ public class ComputeGDD
             CoordinateAxis xAxis = gcs.getXHorizAxis();
             CoordinateAxis yAxis = gcs.getYHorizAxis();
             CoordinateAxis1DTime tAxis1D = gcs.getTimeAxis1D();
-            Index index = new Index3D(new int[] { 
-                    (int)tAxis1D.getSize(),
+            Index2D index = new Index2D(new int[] {
                     (int)yAxis.getSize(),
                     (int)xAxis.getSize()
                 });
@@ -66,7 +64,6 @@ public class ComputeGDD
             ArrayShort.D3 current = new ArrayShort.D3(1, (int)yAxis.getSize(), (int)xAxis.getSize()); 
             Array time = Array.factory(DataType.DOUBLE, new int[] { 1 });
             Array times = tAxis1D.read();
-            Array temp = grid.readDataSlice(-1, -1, -1, -1);
             Converter converter = UnitFormatManager.instance().parse(grid.getUnitsString()).getConverterTo(units);
             Calendar c = Calendar.getInstance(TimeZone.getTimeZone("Z"));
             for (int t = 0, outT = 0; t < tAxis1D.getSize(); t += 1) {
@@ -75,13 +72,13 @@ public class ComputeGDD
                     // Only output data for March 1 through September 30
                     continue;
                 }
-                index.setDim(0, t);
                 time.setDouble(0, times.getDouble(t));
                 out.write("time", new int[] { outT }, time);
+                Array temp = grid.readDataSlice(t, -1, -1, -1);
                 for (int y = 0; y < yAxis.getSize(); y += 1) {
-                    index.setDim(1, y);
+                    index.set0(y);
                     for (int x = 0; x < xAxis.getSize(); x += 1) {
-                        index.setDim(2, x);
+                        index.set1(x);
                         float degrees = converter.convert(temp.getFloat(index));
                         float degreeDays = Math.max(0.0f, Math.min(degrees, max) - min);
                         float value = prev.get(0, y, x) + degreeDays;
@@ -119,8 +116,8 @@ public class ComputeGDD
         out.addGlobalAttribute("centerlon", new Double(-107.0));
         out.addGlobalAttribute("history", "created by National Geographic Education Programs");
         out.addGlobalAttribute("institution", "National Geographic Society");
-        out.addGlobalAttribute("latcorners", toMa2Array(DataType.FLOAT, new double[] { 1.0, 0.897945, 46.3544, 46.63433 }));
-        out.addGlobalAttribute("loncorners", toMa2Array(DataType.FLOAT, new double[] { -145.5, -68.32005, -2.569891, 148.6418 }));
+        out.addGlobalAttribute("latcorners", ma2Arr(DataType.FLOAT, 1.0, 0.897945, 46.3544, 46.63433));
+        out.addGlobalAttribute("loncorners", ma2Arr(DataType.FLOAT, -145.5, -68.32005, -2.569891, 148.6418));
         out.addGlobalAttribute("platform", "Model");
         out.addGlobalAttribute("references", "");
         out.addGlobalAttribute("standardpar1", new Double(50.0));
@@ -176,7 +173,7 @@ public class ComputeGDD
         out.addVariableAttribute("Lambert_Conformal", "grid_mapping_name", "lambert_conformal_conic");
         out.addVariableAttribute("Lambert_Conformal", "latitude_of_projection_origin", new Double(50.0));
         out.addVariableAttribute("Lambert_Conformal", "longitude_of_central_meridian", new Double(-107.0));
-        out.addVariableAttribute("Lambert_Conformal", "standard_parallel", toMa2Array(DataType.DOUBLE, new double[] { 50.0, 50.0 }));
+        out.addVariableAttribute("Lambert_Conformal", "standard_parallel", ma2Arr(DataType.DOUBLE, 50.0, 50.0));
 
         out.addVariable("time_bnds", DataType.DOUBLE, new Dimension[] { nbDim });
         out.addVariableAttribute("time_bnds", "long_name", "Time Boundaries");
@@ -196,7 +193,7 @@ public class ComputeGDD
         out.addVariableAttribute("gdd", "var_desc", "Growing degree days");
     }
     
-    private static Array toMa2Array (DataType type, double[] values) {
+    private static Array ma2Arr (DataType type, double... values) {
         Array result = Array.factory(type, new int[] { values.length });
         for (int i = 0; i < values.length; i += 1) {
             result.setDouble(i, values[i]);
