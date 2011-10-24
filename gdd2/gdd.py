@@ -27,6 +27,7 @@ this script'''
     dbcurs.close()
 
 def setup_environment ():
+    '''Set up the complete execution environment for this script'''
     # Set up basic logging to stdout
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
                         level=logging.DEBUG)
@@ -195,11 +196,11 @@ raster catalog, and mark it as beloning to that date'''
 
 def main (argv=None):
     '''Usage: <script> <begin_date(optional)> <end_date(optional)>
-create growing degree day rasters for each day between begin_date (which
-defaults to today) and end_date (which defaults to begin_date), inclusive.
-Dates should be expressed in YYYY-MM-DD format.'''
+create growing degree day rasters for each day between begin_date 
+(which defaults to yesterday) and end_date (which defaults to 
+begin_date), inclusive. Dates should be given in YYYY-MM-DD format.'''
     setup_environment()
-    begin_date = datetime.date.today()
+    begin_date = datetime.date.today() - datetime.timedelta(1)
     if argv is not None and len(argv) > 0:
         begin_date = datetime.datetime.strptime(argv[0], '%Y-%m-%d').date()
     end_date = begin_date
