@@ -1,8 +1,9 @@
-import arcpy, csv, datetime, httplib, io, MySQLdb, os, re, sqlite3, sys, urllib
+import arcpy, csv, datetime, httplib, io, logging, os, re, sqlite3, sys, urllib
 from arcpy import env, sa
 
-DBCONN = None
-CATALOG = 'growing_degree_days'
+_DBCONN = None
+_CATALOG = 'growing_degree_days'
+logger = logging.getLogger('gdd')
 
 def create_database (path):
     '''Create an sqlite database for storing temperature station data. Load the station
@@ -26,6 +27,9 @@ this script'''
     dbcurs.close()
 
 def setup_environment ():
+    # Set up basic logging to stdout
+    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+                        level=logging.DEBUG)
     # Set up geoprocessing environment defaults
     sr = arcpy.SpatialReference()
     sr.loadFromString(r'PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0],AUTHORITY["EPSG",3857]]')
@@ -36,27 +40,27 @@ def setup_environment ():
     folder = os.path.dirname(os.path.abspath(__file__))
     scratch_gdb = os.path.join(folder, 'scratch.gdb')
     if not os.path.exists(scratch_gdb):
-        print 'creating scratch.gdb'
+        logger.debug('creating scratch.gdb')
         arcpy.CreateFileGDB_management(folder, 'scratch.gdb')
     env.scratchWorkspace = scratch_gdb
     # Create a results geodatabase
     results_gdb = os.path.join(folder, 'data.gdb')
     if not os.path.exists(results_gdb):
-        print 'creating data.gdb'
+        logger.debug('creating data.gdb')
         arcpy.CreateFileGDB_management(folder, 'data.gdb')
     env.workspace = results_gdb
     # Create a raster catalog in the results geodatabase to store our time series data
-    if not arcpy.Exists(CATALOG):
-        print 'creating %s' % CATALOG
-        arcpy.CreateRasterCatalog_management(results_gdb, CATALOG)
-        arcpy.AddField_management(CATALOG, 'Date', 'DATE')
+    if not arcpy.Exists(_CATALOG):
+        logger.debug('creating %s', _CATALOG)
+        arcpy.CreateRasterCatalog_management(results_gdb, _CATALOG)
+        arcpy.AddField_management(_CATALOG, 'Date', 'DATE')
     # Create an sqlite database to hold the temperature station data, and open a connection to it
     db = os.path.join(folder, 'temperature.db')
     if not os.path.exists(db):
-        print 'creating temperature.db'
+        logger.debug('creating temperature.db')
         create_database(db)
-    global DBCONN
-    DBCONN = sqlite3.connect(db)
+    global _DBCONN
+    _DBCONN = sqlite3.connect(db)
 
 def get_daily_data ():
     '''Download temperature data from NOAA's Climate Prediction Center. Returns a tuple of the date of the data and the data itself.'''
@@ -73,12 +77,13 @@ def get_daily_data ():
         if tmin == -999: continue
         id = row[28:33]
         result.append((id, tmax, tmin, date,))
+    logger.debug('loaded %s points for %s from cpc.ncep.noaa.gov', len(result), date.isoformat())
     return (date, result,)
 
 def get_gsod_data (begin_date, end_date, stations=None):
     '''Download temperature data from National Climate Data Center's Global Summary of Day dataset'''
     if stations is None:
-        cursor = DBCONN.cursor()
+        cursor = _DBCONN.cursor()
         cursor.execute("SELECT s.id FROM station s WHERE s.source='GSOD'")
         stations = [ record[0] for record in cursor.fetchall() ]
         cursor.close()
@@ -111,17 +116,20 @@ def get_gsod_data (begin_date, end_date, stations=None):
             id = row[0] + row[1]
             date = datetime.datetime.strptime(row[2].strip(), '%Y%m%d').date()
             result.append((id, tmax, tmin, date,))
+        logger.debug('loaded %s points for %s to %s from ncdc.noaa.gov', len(result), begin_date.isoformat(), end_date.isoformat())
+    else:
+        logger.error('http response code %s from download request to ncdc.noaa.gov', response.status)
     return result
 
 def store_temperatures (date):
     '''Store temperatures for the given date in the sqlite database. Uses CPC 
 and GSOD data if the requested day is available from the CPC, otherwise uses 
 only GSOD data using additional stations to replace the CPC data'''
-    sql = DBCONN.cursor()
+    sql = _DBCONN.cursor()
     sql.execute('SELECT COUNT(*) FROM temperature t WHERE t.date=?', (date,))
     tcount = sql.fetchall()[0][0]
     if tcount == 0:
-        print 'downloading data for %s' % date.isoformat()
+        logger.debug('downloading data for %s', date.isoformat())
         ddate, data = get_daily_data()
         if ddate == date:
             sql.execute("SELECT id FROM station WHERE gsod_daily=1")
@@ -130,20 +138,20 @@ only GSOD data using additional stations to replace the CPC data'''
         else:
             data = get_gsod_data(date, date)
         sql.executemany('INSERT INTO temperature (station,tmax,tmin,date) VALUES (?, ?, ?, ?)', data)
-        DBCONN.commit()
+        _DBCONN.commit()
     sql.close()
 
 def create_gdd_raster (date):
     '''Create a raster of growing degree days for the given date. Assumes
 that temperature data for that date has already been loaded into the
 database'''
-    print 'creating raster for %s' % date.isoformat()
+    logger.debug('creating raster for %s', date.isoformat())
     feature_class = arcpy.CreateFeatureclass_management("in_memory", "temp", "POINT")
     arcpy.AddField_management(feature_class, 'tmin', 'SHORT')
     arcpy.AddField_management(feature_class, 'tmax', 'SHORT')
     cursor = arcpy.InsertCursor(feature_class)
     point = arcpy.Point()
-    sql = DBCONN.cursor()
+    sql = _DBCONN.cursor()
     sql.execute('SELECT s.easting,s.northing,t.tmax,t.tmin FROM temperature t INNER JOIN station s ON s.id=t.station WHERE t.date=?', (date,))
     rcount = 0
     for record in sql.fetchall():
@@ -156,7 +164,7 @@ database'''
         cursor.insertRow(row)
         rcount += 1
     del cursor
-    print '  interpolating %s points' % rcount
+    logger.debug('interpolating %s points', rcount)
     arcpy.CheckOutExtension("Spatial")
     tmax_ras = sa.Idw(feature_class, 'tmax', 5000, 2, sa.RadiusVariable(10, 300000))
     tmin_ras = sa.Idw(feature_class, 'tmin', 5000, 2, sa.RadiusVariable(10, 300000))
@@ -177,8 +185,8 @@ database'''
 def add_gdd_raster_to_catalog (gdd_img, date):
     '''Add the given growing degree day raster for the given date to the master
 raster catalog, and mark it as beloning to that date'''
-    arcpy.RasterToGeodatabase_conversion(gdd_img, CATALOG)
-    rows = arcpy.UpdateCursor(CATALOG, "Name = '%s'" % gdd_img)
+    arcpy.RasterToGeodatabase_conversion(gdd_img, _CATALOG)
+    rows = arcpy.UpdateCursor(_CATALOG, "Name = '%s'" % gdd_img)
     for row in rows:
         row.Date = "%s/%s/%s" % (date.month, date.day, date.year,)
         rows.updateRow(row)
