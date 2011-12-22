@@ -2,7 +2,7 @@ import arcpy, csv, datetime, httplib, io, logging, os, re, sqlite3, sys, urllib
 from arcpy import env, sa
 
 _DBCONN = None
-_CATALOG = 'growing_degree_days'
+_MOSAIC = 'growing_degree_days'
 logger = logging.getLogger('gdd')
 
 def create_database (path):
@@ -26,7 +26,7 @@ this script'''
     dbconn.commit()
     dbcurs.close()
 
-def setup_environment ():
+def setup_environment():
     '''Set up the complete execution environment for this script'''
     # Set up basic logging to stdout
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
@@ -51,10 +51,11 @@ def setup_environment ():
         arcpy.CreateFileGDB_management(folder, 'data.gdb')
     env.workspace = results_gdb
     # Create a raster catalog in the results geodatabase to store our time series data
-    if not arcpy.Exists(_CATALOG):
-        logger.debug('creating %s', _CATALOG)
-        arcpy.CreateRasterCatalog_management(results_gdb, _CATALOG)
-        arcpy.AddField_management(_CATALOG, 'Date', 'DATE')
+    if not arcpy.Exists(_MOSAIC):
+        logger.debug('creating %s', _MOSAIC)
+        arcpy.CreateMosaicDataset_management(results_gdb, _MOSAIC, sr, 1, '16_BIT_UNSIGNED')
+        arcpy.AddField_management(_MOSAIC, 'BeginDate', 'DATE')
+        arcpy.AddField_management(_MOSAIC, 'EndDate', 'DATE')
     # Create an sqlite database to hold the temperature station data, and open a connection to it
     db = os.path.join(folder, 'temperature.db')
     if not os.path.exists(db):
@@ -64,7 +65,7 @@ def setup_environment ():
     _DBCONN = sqlite3.connect(db)
 
 def get_daily_data ():
-    '''Download temperature data from NOAA's Climate Prediction Center. Returns a tuple of the date of the data and the data itself.'''
+    '''Download temperature data from NOAA's Climate Prediction Center. Returns a tuple of the date and the data.'''
     result = []
     data = urllib.urlopen('http://www.cpc.ncep.noaa.gov/products/analysis_monitoring/cdus/prcp_temp_tables/dly_glob1.txt')
     for i, row in enumerate(data):
@@ -183,13 +184,19 @@ database'''
     arcpy.CheckInExtension("Spatial")
     return out_ras
 
-def add_gdd_raster_to_catalog (gdd_img, date):
+def add_gdd_raster_to_mosaic (gdd_img, date):
     '''Add the given growing degree day raster for the given date to the master
 raster catalog, and mark it as beloning to that date'''
-    arcpy.RasterToGeodatabase_conversion(gdd_img, _CATALOG)
-    rows = arcpy.UpdateCursor(_CATALOG, "Name = '%s'" % gdd_img)
+    logger.debug('adding raster %s to mosaic', gdd_img)
+    arcpy.AddRastersToMosaicDataset_management(_MOSAIC, 'Raster Dataset', gdd_img, \
+                                               'UPDATE_CELL_SIZES', 'UPDATE_BOUNDARY', 'NO_OVERVIEWS', \
+                                               '#', '#', '#', '#', '#', '#', '#', \
+                                               'BUILD_PYRAMIDS', 'CALCULATE_STATISTICS', 'BUILD_THUMBNAILS')
+    rows = arcpy.UpdateCursor(_MOSAIC, "Name = '%s'" % gdd_img)
+    end_date = date + datetime.timedelta(1)
     for row in rows:
-        row.Date = "%s/%s/%s" % (date.month, date.day, date.year,)
+        row.BeginDate = "%s/%s/%s" % (date.month, date.day, date.year,)
+        row.EndDate = "%s/%s/%s" % (end_date.month, end_date.day, end_date.year,)
         rows.updateRow(row)
     del row
     del rows
@@ -213,8 +220,14 @@ begin_date), inclusive. Dates should be given in YYYY-MM-DD format.'''
     while date <= end_date:
         store_temperatures(date)
         raster = create_gdd_raster(date)
-        add_gdd_raster_to_catalog(raster, date)
+        add_gdd_raster_to_mosaic(raster, date)
         date = date + datetime.timedelta(1)
+    logger.debug('updating mosaic statistics')
+    logger.debug('maximum = %s' % arcpy.GetRasterProperties_management(_MOSAIC, 'MAXIMUM'))
+    arcpy.CalculateStatistics_management(_MOSAIC)
+    arcpy.BuildPyramidsandStatistics_management(_MOSAIC, 'INCLUDE_SUBDIRECTORIES', 'BUILD_PYRAMIDS', 'CALCULATE_STATISTICS')
+    arcpy.RefreshCatalog(_MOSAIC)
+    logger.debug('maximum = %s' % arcpy.GetRasterProperties_management(_MOSAIC, 'MAXIMUM'))
     return 0
 
 if __name__ == "__main__":
