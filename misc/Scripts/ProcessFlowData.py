@@ -8,11 +8,11 @@ import sys, string, os, arcpy
 # field named "HUC8" that contains the 8-digit hydrologic unit code for
 # each record.
 elevation_src = "C:/Users/Administrator/Documents/ArcGIS/elevdata"
-huc8_src = "C:/Users/Administrator/Documents/ArcGIS/elwha.gdb/huc8"
+huc8_src = "C:/Users/Administrator/Documents/ArcGIS/Default.gdb/elwha_huc8"
 
 # Output desintations
-flowpath_workspace = "C:/Users/Administrator/Documents/Geoprocessing/misc/flowpath.gdb"
-watershed_workspace = "C:/Users/Administrator/Documents/Geoprocessing/misc/watershed.gdb"
+flowpath_workspace = "Y:/arcgisserver/data/ew_flowpath.gdb"
+watershed_workspace = "Y:/arcgisserver/data/ew_watershed.gdb"
 
 arcpy.CheckOutExtension("Spatial")
 folder = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +27,7 @@ fill_30sec = arcpy.sa.Fill(elevation_30sec)
 flowdir_30sec = arcpy.sa.FlowDirection(fill_30sec)
 flowdir_30sec_flowpath = os.path.join(flowpath_workspace, "fldir_30sec")
 flowdir_30sec.save(flowdir_30sec_flowpath)
-flowaccum_30sec = arcpy.sa.FlowAccumulation(flowdir_30sec)
+flowaccum_30sec = arcpy.sa.FlowAccumulation(flowdir_30sec, '', 'INTEGER')
 flowcomposite_30sec_watershed = os.path.join(watershed_workspace, "flcmp_30sec")
 arcpy.CompositeBands_management("%s;%s" % (flowaccum_30sec, flowdir_30sec), flowcomposite_30sec_watershed)
 flowline_raster = arcpy.sa.Con(flowaccum_30sec, 1, 0, '"VALUE" > 300')
@@ -58,8 +58,8 @@ for huc8 in huc8s:
 	flowdir_idx.VALUE = "fd_%s" % code
 	index_flowpath_cursor.insertRow(flowdir_idx)
 	del flowdir_idx
-	flowaccum_5sec = arcpy.sa.FlowAccumulation(flowdir_5sec)
-	flowcomposite_5sec_watershed = os.path.join(watershed_workspace, "fc_%s" % code);
+	flowaccum_5sec = arcpy.sa.FlowAccumulation(flowdir_5sec, '', 'INTEGER')
+	flowcomposite_5sec_watershed = os.path.join(watershed_workspace, "fc_%s" % code)
 	arcpy.CompositeBands_management("%s;%s" % (flowaccum_5sec, flowdir_5sec), flowcomposite_5sec_watershed)
 	watershed_idx = index_watershed_cursor.newRow()
 	watershed_idx.shape = huc8.shape
