@@ -3,6 +3,7 @@ from arcpy import env, sa
 
 _DBCONN = None
 _MOSAIC = 'growing_degree_days'
+_YESTERDAY = None
 logger = logging.getLogger('gdd')
 
 def create_database (path):
@@ -132,7 +133,12 @@ only GSOD data using additional stations to replace the CPC data'''
     tcount = sql.fetchall()[0][0]
     if tcount == 0:
         logger.debug('downloading data for %s', date.isoformat())
-        ddate, data = get_daily_data()
+        global _YESTERDAY
+        ddate = None
+        if _YESTERDAY is None or date == _YESTERDAY:
+            ddate, data = get_daily_data()
+            if _YESTERDAY is None:
+                _YESTERDAY = ddate
         if ddate == date:
             sql.execute("SELECT id FROM station WHERE gsod_daily=1")
             gsod_stations = [ record[0] for record in sql.fetchall() ]
@@ -175,7 +181,7 @@ database'''
     gdd_ras = sa.Con(gdd_ras > 36, 36, gdd_ras)
     prev_day = date - datetime.timedelta(1)
     prev_ras = prev_day.strftime('GDD_%Y%m%d')
-    if arcpy.Exists(prev_ras):
+    if arcpy.Exists(prev_ras) and (date.month != 1 or date.day != 1):
         gdd_ras = sa.Plus(gdd_ras, prev_ras)
     out_ras = date.strftime('GDD_%Y%m%d')
     arcpy.CopyRaster_management(gdd_ras, out_ras, "DEFAULTS", "", 65535, "", "", "16_BIT_UNSIGNED")
@@ -223,11 +229,9 @@ begin_date), inclusive. Dates should be given in YYYY-MM-DD format.'''
         add_gdd_raster_to_mosaic(raster, date)
         date = date + datetime.timedelta(1)
     logger.debug('updating mosaic statistics')
-    logger.debug('maximum = %s' % arcpy.GetRasterProperties_management(_MOSAIC, 'MAXIMUM'))
     arcpy.CalculateStatistics_management(_MOSAIC)
     arcpy.BuildPyramidsandStatistics_management(_MOSAIC, 'INCLUDE_SUBDIRECTORIES', 'BUILD_PYRAMIDS', 'CALCULATE_STATISTICS')
     arcpy.RefreshCatalog(_MOSAIC)
-    logger.debug('maximum = %s' % arcpy.GetRasterProperties_management(_MOSAIC, 'MAXIMUM'))
     return 0
 
 if __name__ == "__main__":
