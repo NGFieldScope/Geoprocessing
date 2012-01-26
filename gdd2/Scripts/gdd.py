@@ -38,6 +38,7 @@ def setup_environment():
     env.outputCoordinateSystem = sr
     env.extent = arcpy.Extent(-20000000, 1800000, -7000000, 11600000)
     env.rasterStatistics = 'STATISTICS'
+    env.overwriteOutput = True
     # Create a scratch geodatabase for storing intermediate results
     root_folder = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     scratch_folder = os.path.join(root_folder, 'Scratch')
@@ -196,6 +197,11 @@ database'''
 def add_gdd_raster_to_mosaic (gdd_img, date):
     '''Add the given growing degree day raster for the given date to the master
 raster catalog, and mark it as beloning to that date'''
+    rows = arcpy.UpdateCursor(_MOSAIC, "Name = '%s'" % gdd_img)
+    for row in rows:
+        logger.debug('removing existing raster %s', gdd_img)
+        rows.deleteRow(row)
+    del rows
     logger.debug('adding raster %s to mosaic', gdd_img)
     arcpy.AddRastersToMosaicDataset_management(_MOSAIC, 'Raster Dataset', gdd_img, \
                                                'UPDATE_CELL_SIZES', 'UPDATE_BOUNDARY', 'NO_OVERVIEWS', \
@@ -207,7 +213,6 @@ raster catalog, and mark it as beloning to that date'''
         row.BeginDate = "%s/%s/%s" % (date.month, date.day, date.year,)
         row.EndDate = "%s/%s/%s" % (end_date.month, end_date.day, end_date.year,)
         rows.updateRow(row)
-    del row
     del rows
 
 def main (argv=None):
