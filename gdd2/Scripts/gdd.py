@@ -6,11 +6,11 @@ _MOSAIC = 'growing_degree_days'
 _YESTERDAY = None
 logger = logging.getLogger('gdd')
 
-def create_database (path):
+def create_temperature_database (path, stations_db):
     '''Create an sqlite database for storing temperature station data. Load the station
 id and location information from the stations.db file, which should be distributed with
 this script'''
-    dbconn = sqlite3.connect('stations.db')
+    dbconn = sqlite3.connect(stations_db)
     dbcurs = dbconn.cursor()
     dbcurs.execute('SELECT * FROM station WHERE 1=1')
     stations = list(dbcurs.fetchall())
@@ -39,17 +39,19 @@ def setup_environment():
     env.extent = arcpy.Extent(-20000000, 1800000, -7000000, 11600000)
     env.rasterStatistics = 'STATISTICS'
     # Create a scratch geodatabase for storing intermediate results
-    folder = os.path.dirname(os.path.abspath(__file__))
-    scratch_gdb = os.path.join(folder, 'scratch.gdb')
+    root_folder = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+    scratch_folder = os.path.join(root_folder, 'Scratch')
+    scratch_gdb = os.path.join(scratch_folder, 'scratch.gdb')
     if not os.path.exists(scratch_gdb):
         logger.debug('creating scratch.gdb')
-        arcpy.CreateFileGDB_management(folder, 'scratch.gdb')
+        arcpy.CreateFileGDB_management(scratch_folder, 'scratch.gdb')
     env.scratchWorkspace = scratch_gdb
     # Create a results geodatabase
-    results_gdb = os.path.join(folder, 'data.gdb')
+    data_folder = os.path.join(root_folder, 'ToolData')
+    results_gdb = os.path.join(data_folder, 'data.gdb')
     if not os.path.exists(results_gdb):
         logger.debug('creating data.gdb')
-        arcpy.CreateFileGDB_management(folder, 'data.gdb')
+        arcpy.CreateFileGDB_management(data_folder, 'data.gdb')
     env.workspace = results_gdb
     # Create a raster catalog in the results geodatabase to store our time series data
     if not arcpy.Exists(_MOSAIC):
@@ -58,12 +60,13 @@ def setup_environment():
         arcpy.AddField_management(_MOSAIC, 'BeginDate', 'DATE')
         arcpy.AddField_management(_MOSAIC, 'EndDate', 'DATE')
     # Create an sqlite database to hold the temperature station data, and open a connection to it
-    db = os.path.join(folder, 'temperature.db')
-    if not os.path.exists(db):
+    stations_db = os.path.join(data_folder, 'stations.db')
+    temperature_db = os.path.join(scratch_folder, 'temperature.db')
+    if not os.path.exists(temperature_db):
         logger.debug('creating temperature.db')
-        create_database(db)
+        create_temperature_database(temperature_db, stations_db)
     global _DBCONN
-    _DBCONN = sqlite3.connect(db)
+    _DBCONN = sqlite3.connect(temperature_db)
 
 def get_daily_data ():
     '''Download temperature data from NOAA's Climate Prediction Center. Returns a tuple of the date and the data.'''
