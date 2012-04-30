@@ -20,6 +20,8 @@ def setup_environment():
     # Create a scratch geodatabase for storing intermediate results
     root_folder = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     scratch_folder = os.path.join(root_folder, 'Scratch')
+    if not os.path.exists(scratch_folder):
+        os.makedirs(scratch_folder)
     scratch_gdb = os.path.join(scratch_folder, 'scratch.gdb')
     if not os.path.exists(scratch_gdb):
         logger.debug('creating scratch.gdb')
@@ -27,6 +29,8 @@ def setup_environment():
     env.scratchWorkspace = scratch_gdb
     # Create a results geodatabase
     data_folder = os.path.join(root_folder, 'ToolData')
+    if not os.path.exists(data_folder):
+        os.makedirs(data_folder)
     results_gdb = os.path.join(data_folder, 'data.gdb')
     if not os.path.exists(results_gdb):
         logger.debug('creating data.gdb')
@@ -241,4 +245,3 @@ if at least 1500 temperature observations are available.'''
 if __name__ == "__main__":
     status = main(sys.argv[1:])
     sys.exit(0)
-    
