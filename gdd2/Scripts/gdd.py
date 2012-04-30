@@ -201,7 +201,7 @@ def read_post_response (host, path, param_dict):
 def main (argv=None):
     '''Usage: <script> <begin_date(optional)> <end_date(optional)>
 create growing degree day rasters for each day between begin_date 
-(which defaults to seven days ago) and end_date (which defaults to 
+(which defaults to five days ago) and end_date (which defaults to 
 today), inclusive. Dates should be given in YYYY-MM-DD format. Will
 only create rasters for days that don't already have one, and only
 if at least 1500 temperature observations are available.'''
@@ -229,7 +229,7 @@ if at least 1500 temperature observations are available.'''
     current_date = begin_date
     while current_date <= end_date:
         db_cursor.execute('SELECT COUNT (*) from temperature t WHERE t.date=?', (current_date,))
-        if db_cursor.fetchone()[0] < 1500:
+        if db_cursor.fetchone()[0] < 2000:
             logger.debug('insufficient data to create raster for %s' % current_date)
             break
         raster = create_gdd_raster(current_date, 50, 86)
