@@ -1,7 +1,7 @@
 import json, logging, math, os, string, sys, urllib, urllib2
 
-mapservice_url = "http://fieldscope/ArcGIS/rest/services/budburst/landcover/MapServer"
-destination = "C:/Users/Administrator/Documents/UTFGrid/landcover"
+mapservice_url = "http://fieldscope/ArcGIS/rest/services/budburst/surface_temp/MapServer"
+destination = "C:/Users/Administrator/Documents/UTFGrid/st_web"
 
 class hashabledict(dict):
   def __key(self):
@@ -24,8 +24,8 @@ def meters_to_tile (level, mx, my):
     origin = 2 * math.pi * 6378137 / 2.0
     px = (mx + origin) / resolution
     py = (origin - my) / resolution
-    tx = int( math.ceil( px / 256.0 ) - 1 )
-    ty = int( math.ceil( py / 256.0 ) - 1 )
+    tx = int(math.floor(px / 256.0 ))
+    ty = int(math.floor(py / 256.0))
     return tx,ty
 
 def tiles (level, xmin, ymin, xmax, ymax):
@@ -95,17 +95,13 @@ def main (argv=None):
     if not os.path.exists(destination):
         os.makedirs(destination)
     config = json.loads(urllib2.urlopen(mapservice_url + "?f=json").read())
-    if not config['singleFusedMapCache']:
-        raise Exception('Map service must have single fused map cache')
     wkid = config['spatialReference']['wkid']
     if not (wkid == 102113 or wkid == 102100):
         raise Exception('Map service must be in Web Mercator projection')
-    origin = (config['tileInfo']['origin']['x'], config['tileInfo']['origin']['y'],)
-    tile_size = (config['tileInfo']['cols'], config['tileInfo']['rows'],)
+    tile_size = (256,256,)
     full_extent = (config['fullExtent']['xmin'], config['fullExtent']['ymin'],
                    config['fullExtent']['xmax'], config['fullExtent']['ymax'],)
-    for lod in config['tileInfo']['lods']:
-        level = lod['level']
+    for level in xrange(0, 19):
         for tile,bbox in tiles(level, *full_extent):
             folder = os.path.join(os.path.join(destination, str(level)), str(tile[0]))
             if not os.path.exists(folder):
