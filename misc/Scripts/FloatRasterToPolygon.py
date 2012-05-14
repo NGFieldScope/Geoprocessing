@@ -33,7 +33,7 @@ try:
     gp.RasterToPolygon_conversion(intRaster, outputFC, "SIMPLIFY", "")
     gp.AddField_management(outputFC, "Value", "DOUBLE", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
     gp.CalculateField_management(outputFC, "Value", "[GRIDCODE] / " + str(factor), "VB", "")
-    gp.DeleteField_management(outputFC, "ID;GRIDCODE"
+    gp.DeleteField_management(outputFC, "ID;GRIDCODE")
     gp.Delete_management(timesRaster, "RasterDataset")
     gp.Delete_management(intRaster, "RasterDataset")
     gp.CheckInExtension("spatial")
