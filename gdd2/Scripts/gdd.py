@@ -1,5 +1,4 @@
 import arcpy, csv, datetime, httplib, io, json, logging, math, os, re, sqlite3, sys, urllib
-from arcpy import env, sa
 
 _DBCONN = None
 _MOSAIC = 'growing_degree_days'
@@ -13,10 +12,10 @@ def setup_environment():
     # Set up geoprocessing environment defaults
     sr = arcpy.SpatialReference()
     sr.loadFromString(r'PROJCS["WGS_1984_Web_Mercator_Auxiliary_Sphere",GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Mercator_Auxiliary_Sphere"],PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],PARAMETER["Central_Meridian",0.0],PARAMETER["Standard_Parallel_1",0.0],PARAMETER["Auxiliary_Sphere_Type",0.0],UNIT["Meter",1.0],AUTHORITY["EPSG",3857]]')
-    env.outputCoordinateSystem = sr
-    env.extent = arcpy.Extent(-20000000, 1800000, -7000000, 11600000)
-    env.rasterStatistics = 'STATISTICS'
-    env.overwriteOutput = True
+    arcpy.env.outputCoordinateSystem = sr
+    arcpy.env.extent = arcpy.Extent(-20000000, 1800000, -7000000, 11600000)
+    arcpy.env.rasterStatistics = 'STATISTICS'
+    arcpy.env.overwriteOutput = True
     # Create a scratch geodatabase for storing intermediate results
     root_folder = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     scratch_folder = os.path.join(root_folder, 'Scratch')
@@ -25,8 +24,8 @@ def setup_environment():
     scratch_gdb = os.path.join(scratch_folder, 'scratch.gdb')
     if not os.path.exists(scratch_gdb):
         logger.debug('creating scratch.gdb')
-        arcpy.CreateFileGDB_management(scratch_folder, 'scratch.gdb')
-    env.scratchWorkspace = scratch_gdb
+        arcpy.management.CreateFileGDB(scratch_folder, 'scratch.gdb')
+    arcpy.env.scratchWorkspace = scratch_gdb
     # Create a results geodatabase
     data_folder = os.path.join(root_folder, 'ToolData')
     if not os.path.exists(data_folder):
@@ -34,14 +33,14 @@ def setup_environment():
     results_gdb = os.path.join(data_folder, 'data.gdb')
     if not os.path.exists(results_gdb):
         logger.debug('creating data.gdb')
-        arcpy.CreateFileGDB_management(data_folder, 'data.gdb')
-    env.workspace = results_gdb
+        arcpy.management.CreateFileGDB(data_folder, 'data.gdb')
+    arcpy.env.workspace = results_gdb
     # Create a raster catalog in the results geodatabase to store our time series data
     if not arcpy.Exists(_MOSAIC):
         logger.debug('creating %s', _MOSAIC)
-        arcpy.CreateMosaicDataset_management(results_gdb, _MOSAIC, sr, 1, '16_BIT_UNSIGNED')
-        arcpy.AddField_management(_MOSAIC, 'BeginDate', 'DATE')
-        arcpy.AddField_management(_MOSAIC, 'EndDate', 'DATE')
+        arcpy.management.CreateMosaicDataset(results_gdb, _MOSAIC, sr, 1, '16_BIT_UNSIGNED')
+        arcpy.management.AddField(_MOSAIC, 'BeginDate', 'DATE')
+        arcpy.management.AddField(_MOSAIC, 'EndDate', 'DATE')
     # Create an sqlite database to hold the temperature station data, and open a connection to it
     temperature_db = os.path.join(scratch_folder, 'temperature.db')
     if not os.path.exists(temperature_db):
@@ -136,9 +135,9 @@ def create_gdd_raster (date, min_temp, max_temp):
 that temperature data for that date has already been loaded into the
 database'''
     logger.debug('creating raster for %s', date.isoformat())
-    feature_class = arcpy.CreateFeatureclass_management("in_memory", "temp", "POINT")
-    arcpy.AddField_management(feature_class, 'tmin', 'SHORT')
-    arcpy.AddField_management(feature_class, 'tmax', 'SHORT')
+    feature_class = arcpy.management.CreateFeatureclass("in_memory", "temp", "POINT")
+    arcpy.management.AddField(feature_class, 'tmin', 'SHORT')
+    arcpy.management.AddField(feature_class, 'tmax', 'SHORT')
     fc_cursor = arcpy.InsertCursor(feature_class)
     point = arcpy.Point()
     db_cursor = _DBCONN.cursor()
@@ -157,20 +156,20 @@ database'''
     del fc_cursor
     logger.debug('interpolating %s points', rcount)
     arcpy.CheckOutExtension("Spatial")
-    tmax_ras = sa.Idw(feature_class, 'tmax', 5000, 2, sa.RadiusVariable(10, 300000))
-    tmin_ras = sa.Idw(feature_class, 'tmin', 5000, 2, sa.RadiusVariable(10, 300000))
+    tmax_ras = arcpy.sa.Idw(feature_class, 'tmax', 5000, 2, arcpy.sa.RadiusVariable(10, 300000))
+    tmin_ras = arcpy.sa.Idw(feature_class, 'tmin', 5000, 2, arcpy.sa.RadiusVariable(10, 300000))
     temp_range = max_temp - min_temp
-    gdd_ras = sa.Minus(sa.Divide(sa.Plus(tmax_ras, tmin_ras), 2), min_temp)
-    gdd_ras = sa.Con(gdd_ras < 0, 0, gdd_ras)
-    gdd_ras = sa.Con(gdd_ras > temp_range, temp_range, gdd_ras)
+    gdd_ras = arcpy.sa.Minus(arcpy.sa.Divide(arcpy.sa.Plus(tmax_ras, tmin_ras), 2), min_temp)
+    gdd_ras = arcpy.sa.Con(gdd_ras < 0, 0, gdd_ras)
+    gdd_ras = arcpy.sa.Con(gdd_ras > temp_range, temp_range, gdd_ras)
     prev_day = date - datetime.timedelta(1)
     prev_ras = prev_day.strftime('GDD_%Y%m%d')
     if arcpy.Exists(prev_ras) and (date.month != 1 or date.day != 1):
-        gdd_ras = sa.Plus(gdd_ras, prev_ras)
+        gdd_ras = arcpy.sa.Plus(gdd_ras, prev_ras)
     out_ras = date.strftime('GDD_%Y%m%d')
-    arcpy.CopyRaster_management(gdd_ras, out_ras, "DEFAULTS", "", 65535, "", "", "16_BIT_UNSIGNED")
-    arcpy.Delete_management(feature_class)
-    arcpy.Delete_management(gdd_ras)
+    arcpy.management.CopyRaster(gdd_ras, out_ras, "DEFAULTS", "", 65535, "", "", "16_BIT_UNSIGNED")
+    arcpy.management.Delete(feature_class)
+    arcpy.management.Delete(gdd_ras)
     arcpy.CheckInExtension("Spatial")
     return out_ras
 
@@ -183,7 +182,7 @@ raster catalog, and mark it as beloning to that date'''
         rows.deleteRow(row)
     del rows
     logger.debug('adding raster %s to mosaic', gdd_img)
-    arcpy.AddRastersToMosaicDataset_management(_MOSAIC, 'Raster Dataset', gdd_img, \
+    arcpy.management.AddRastersToMosaicDataset(_MOSAIC, 'Raster Dataset', gdd_img, \
                                                'UPDATE_CELL_SIZES', 'UPDATE_BOUNDARY', 'NO_OVERVIEWS', \
                                                '#', '#', '#', '#', '#', '#', '#', \
                                                'BUILD_PYRAMIDS', 'CALCULATE_STATISTICS', 'BUILD_THUMBNAILS')
@@ -243,8 +242,8 @@ if at least 3000 temperature observations are available.'''
         current_date = current_date + datetime.timedelta(1)
     db_cursor.close()
     logger.debug('updating mosaic statistics')
-    arcpy.CalculateStatistics_management(_MOSAIC)
-    arcpy.BuildPyramidsandStatistics_management(_MOSAIC, 'INCLUDE_SUBDIRECTORIES', 'BUILD_PYRAMIDS', 'CALCULATE_STATISTICS')
+    arcpy.management.CalculateStatistics(_MOSAIC)
+    arcpy.management.BuildPyramidsandStatistics(_MOSAIC, 'INCLUDE_SUBDIRECTORIES', 'BUILD_PYRAMIDS', 'CALCULATE_STATISTICS')
     arcpy.RefreshCatalog(_MOSAIC)
     return 0
 
