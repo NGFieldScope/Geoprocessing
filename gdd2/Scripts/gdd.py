@@ -1,4 +1,4 @@
-import arcpy, csv, datetime, httplib, io, json, logging, os, re, sqlite3, sys, urllib
+import csv, datetime, httplib, io, json, logging, math, os, re, sqlite3, sys, urllib
 from arcpy import env, sa
 
 _DBCONN = None
