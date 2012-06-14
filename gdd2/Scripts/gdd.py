@@ -1,4 +1,4 @@
-import csv, datetime, httplib, io, json, logging, math, os, re, sqlite3, sys, urllib
+import arcpy, csv, datetime, httplib, io, json, logging, math, os, re, sqlite3, sys, urllib
 from arcpy import env, sa
 
 _DBCONN = None
@@ -52,76 +52,84 @@ def setup_environment():
 
 def create_temperature_database (path):
     '''Create an sqlite database for storing temperature station data. Load the station
-id and location information from the NCDC's ArcGIS Server REST web service'''
+id and location information from the Global Historical Climate Network's data inventory file'''
     logger.debug('creating database file and tables')
     db_conn = sqlite3.connect(path)
     db_cursor = db_conn.cursor()
-    db_cursor.execute('CREATE TABLE station (id VARCHAR(11) NOT NULL, name VARCHAR(64), x INT NOT NULL, y INT NOT NULL, PRIMARY KEY (id));')
-    db_cursor.execute('CREATE TABLE temperature (station VARCHAR(11) NOT NULL REFERENCES station(id), tmin INT NOT NULL, tmax INT NOT NULL, date DATE NOT NULL, PRIMARY KEY (station,date));')
+    db_cursor.execute('CREATE TABLE station (id VARCHAR(11) NOT NULL, x INT NOT NULL, y INT NOT NULL, PRIMARY KEY (id));')
+    db_cursor.execute('''CREATE TABLE temperature (station VARCHAR(11) NOT NULL REFERENCES station(id), 
+                                                   tmin INT NOT NULL, 
+                                                   tmax INT NOT NULL, 
+                                                   date DATE NOT NULL,
+                                                   PRIMARY KEY (station,date));''')
     db_cursor.execute('CREATE INDEX temperature_station_index ON temperature (station);')
     db_cursor.execute('CREATE INDEX temperature_date_index ON temperature (date);')
     db_conn.commit()
-    day_before_yesterday = datetime.date.today() - datetime.timedelta(2)
-    logger.debug('loading list of station ids from web service')
-    params = { 'where' : "COUNTRY='US' AND END_DATE>='%s'" % day_before_yesterday.strftime('%Y/%m/%d'),
-               'returnIdsOnly': 'true',
-               'f': 'json' }
-    response = read_post_response('gis.ncdc.noaa.gov', '/rest/services/cdo/gsod/MapServer/0/query', params)
-    objectids = json.loads(response)['objectIds']
+    current_year = datetime.datetime.now().year
     stations = []
-    start_index = 0
-    logger.debug('loading data for %s stations' % len(objectids))
-    while start_index < len(objectids):
-        end_index = min(start_index + 200, len(objectids))
-        params = { 'where' : 'OBJECTID IN (%s)' % ','.join(map(str, objectids[start_index:end_index])),
-                   'outSR': '102100',
-                   'outFields': 'AWSBAN,STATION',
-                   'f': 'json' }
-        response = read_post_response('gis.ncdc.noaa.gov', '/rest/services/cdo/gsod/MapServer/0/query', params)
-        for record in json.loads(response)['features']:
-            stations.append((str(record['attributes']['AWSBAN']),
-                             str(record['attributes']['STATION']),
-                             int(record['geometry']['x']),
-                             int(record['geometry']['y']),))
-        start_index += 200
-    logger.debug('inserting stations into database')
-    db_cursor.executemany('INSERT INTO station (id,name,x,y) VALUES (?, ?, ?, ?)', stations)
+    logger.debug('loading station data from ncdc.noaa.gov')
+    response = http_get('www1.ncdc.noaa.gov', '/pub/data/ghcn/daily/ghcnd-inventory.txt')
+    for row in iter(response.splitlines()):
+        id = row[0:11].strip()
+        lat = float(row[12:20])
+        lon = float(row[21:30])
+        data = row[31:35].strip()
+        first_year = int(row[36:40])
+        last_year = int(row[41:45])
+        if id[0:2] == 'US' and data == 'TMAX' and last_year == current_year:
+            x = 6378137.0 * lon * 0.017453292519943295
+            a = lat * 0.017453292519943295
+            y = 3189068.5 * math.log((1.0 + math.sin(a)) / (1.0 - math.sin(a)))
+            stations.append((id, int(x), int(y),))
+    logger.debug('loaded %s stations' % len(stations))
+    db_cursor.executemany('INSERT INTO station (id,x,y) VALUES (?, ?, ?)', stations)
     db_conn.commit()
     db_cursor.close()
 
 def store_temperatures (begin_date, end_date):
-    '''Download temperature data from National Climate Data Center's Global Summary of Day dataset'''
-    logger.debug('loading data from %s to %s from ncdc.noaa.gov', begin_date.isoformat(), end_date.isoformat())
+    '''Download temperature data from National Climate Data Center's Global Historical Climate Network dataset'''
+    logger.debug('loading data between %s and %s from ncdc.noaa.gov', begin_date.isoformat(), end_date.isoformat())
     db_cursor = _DBCONN.cursor()
-    db_cursor.execute("SELECT s.id FROM station s")
-    stations = [ record[0] for record in db_cursor.fetchall() ]
-    params = { 'p_ndatasetid' : 10, 'datasetabbv' : 'GSOD', 'p_cqueryby' : 'ENTIRE',
-               'p_csubqueryby' : '', 'p_nrgnid' : '', 'p_ncntryid' : '', 'p_nstprovid' : '',
-               'volume' : 0, 'datequerytype' : 'RANGE', 'outform' : 'COMMADEL', 
-               'startYear' : begin_date.year,
-               'startMonth' : '%02d' % begin_date.month,
-               'startDay' : '%02d' % begin_date.day,
-               'endYear' : end_date.year,
-               'endMonth' : '%02d' % end_date.month,
-               'endDay' : '%02d' % end_date.day,
-               'p_asubqueryitems' : stations }
-    result_page = read_post_response('www7.ncdc.noaa.gov', '/CDO/cdodata.cmd', params)
-    records = []
-    match = re.search('<p><a href="(http://www\d\.ncdc\.noaa\.gov/pub/orders/CDO\d+\.txt)">CDO\d+\.txt</a></p>', result_page, re.MULTILINE)
-    csv_data = urllib.urlopen(match.group(1))
-    for i, row in enumerate(csv.reader(csv_data)):
-        if i == 0: continue # skip headers
-        tmax = int(round(float(row[17][:-1])))
-        if tmax == 10000: continue
-        tmin = int(round(float(row[18][:-1])))
-        if tmin == 10000: continue
-        id = row[0] + row[1]
-        date = datetime.datetime.strptime(row[2].strip(), '%Y%m%d').date()
-        records.append((id, tmax, tmin, date,))
-    logger.debug('loaded %s observations', len(records))
-    db_cursor.executemany('REPLACE INTO temperature (station,tmax,tmin,date) VALUES (?, ?, ?, ?)', records)
-    _DBCONN.commit()
+    db_cursor.execute('SELECT id FROM station')
+    count = 0
+    for record in db_cursor.fetchall():
+        station_id = record[0]
+        try:
+            response = http_get('www1.ncdc.noaa.gov', '/pub/data/ghcn/daily/all/%s.dly' % station_id)
+            records = {}
+            for row in iter(response.splitlines()):
+                element = row[17:21].strip().lower()
+                if element != 'tmin' and element != 'tmax': 
+                    continue
+                year = int(row[11:15])
+                month = int(row[15:17])
+                end_of_month = datetime.date(year, month, 1) + datetime.timedelta(days=30)
+                beginning_of_month = datetime.date(year, month, 1) - datetime.timedelta(days=1)
+                if end_of_month < begin_date or beginning_of_month > end_date:
+                    continue
+                for day,index in enumerate(xrange(21, 262, 8), start=1):
+                    observation_date = datetime.date(year, month, day)
+                    if observation_date not in records:
+                        records[observation_date] = {}
+                    if observation_date < begin_date:
+                        continue
+                    if observation_date > end_date:
+                        break
+                    celsius_tenths = int(row[index:index+5])
+                    if celsius_tenths == -9999:
+                        continue
+                    fahrenheit = int(celsius_tenths * 0.9/5) + 32
+                    records[observation_date][element] = fahrenheit
+                db_cursor.executemany('REPLACE INTO temperature (station,date,tmin,tmax) VALUES (?, ?, ?, ?)',
+                                      [ (station_id, date, data['tmin'], data['tmax'])
+                                        for date, data in records.iteritems()
+                                        if data.get('tmin', None) and data.get('tmax', None) ])
+                count += db_cursor.rowcount
+        except httplib.HTTPException:
+            logger.error('error loading data for station %s', station_id)
+        _DBCONN.commit()
     db_cursor.close()
+    logger.debug('loaded %s observations', count)
 
 def create_gdd_raster (date, min_temp, max_temp):
     '''Create a raster of growing degree days for the given date. Assumes
@@ -187,11 +195,9 @@ raster catalog, and mark it as beloning to that date'''
         rows.updateRow(row)
     del rows
 
-def read_post_response (host, path, param_dict):
-    params = urllib.urlencode(param_dict, True)
-    headers = {"Content-type": "application/x-www-form-urlencoded"}
+def http_get (host, path):
     conn = httplib.HTTPConnection(host)
-    conn.request('POST', path, params, headers)
+    conn.request('GET', path)
     response = conn.getresponse()
     if response.status == 200:
         return response.read()
@@ -204,7 +210,7 @@ create growing degree day rasters for each day between begin_date
 (which defaults to five days ago) and end_date (which defaults to 
 today), inclusive. Dates should be given in YYYY-MM-DD format. Will
 only create rasters for days that don't already have one, and only
-if at least 1500 temperature observations are available.'''
+if at least 3000 temperature observations are available.'''
     setup_environment()
     begin_date = datetime.date.today() - datetime.timedelta(5)
     end_date = datetime.date.today()
@@ -229,7 +235,7 @@ if at least 1500 temperature observations are available.'''
     current_date = begin_date
     while current_date <= end_date:
         db_cursor.execute('SELECT COUNT (*) from temperature t WHERE t.date=?', (current_date,))
-        if db_cursor.fetchone()[0] < 2000:
+        if db_cursor.fetchone()[0] < 3000:
             logger.debug('insufficient data to create raster for %s' % current_date)
             break
         raster = create_gdd_raster(current_date, 50, 86)
