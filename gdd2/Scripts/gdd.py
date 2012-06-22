@@ -1,4 +1,4 @@
-import arcpy, csv, datetime, httplib, io, json, logging, math, os, re, sqlite3, sys, urllib
+import arcpy, calendar, csv, datetime, httplib, io, json, logging, math, os, re, sqlite3, sys, urllib
 
 _DBCONN = None
 _MOSAIC = 'growing_degree_days'
@@ -107,6 +107,8 @@ def store_temperatures (begin_date, end_date):
                 if end_of_month < begin_date or beginning_of_month > end_date:
                     continue
                 for day,index in enumerate(xrange(21, 262, 8), start=1):
+                    if day > calendar.monthrange(year, month)[1]:
+                        continue
                     observation_date = datetime.date(year, month, day)
                     if observation_date not in records:
                         records[observation_date] = {}
